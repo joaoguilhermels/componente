@@ -63,6 +63,20 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- Web (optional — activated by feature toggle) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Micrometer / Observability (optional) -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- Jackson for JSONB serialization -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
