@@ -3,7 +3,7 @@ FROM eclipse-temurin:21-jdk-alpine
 ARG MAVEN_VERSION=3.9.9
 ARG MAVEN_SHA=7a9cdf674fc1703d6382f5f330b3d110ea1b512b51f1652846d9e4e8a588d766
 
-RUN apk add --no-cache curl bash \
+RUN apk add --no-cache curl bash docker-cli \
     && mkdir -p /opt/maven \
     && curl -fsSL "https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz" \
        -o /tmp/maven.tar.gz \

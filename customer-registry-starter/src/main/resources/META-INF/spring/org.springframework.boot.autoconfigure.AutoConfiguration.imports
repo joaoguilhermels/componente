@@ -1,1 +1,3 @@
 com.oneff.customer.autoconfigure.CustomerRegistryCoreAutoConfiguration
+com.oneff.customer.autoconfigure.CustomerRegistryPersistenceAutoConfiguration
+com.oneff.customer.autoconfigure.CustomerRegistryMigrationAutoConfiguration
