@@ -24,3 +24,6 @@ export * from './lib/services';
 
 // Validators
 export * from './lib/validators';
+
+// Components
+export * from './lib/components';

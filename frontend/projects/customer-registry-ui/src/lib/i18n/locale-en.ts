@@ -9,6 +9,12 @@ export const LOCALE_EN: Record<string, string> = {
   'label.edit': 'Edit',
   'label.search': 'Search',
   'label.loading': 'Loading...',
+  'label.clear': 'Clear',
+  'label.all': 'All',
+  'label.confirm': 'Confirm',
+  'label.back': 'Back',
+  'label.add': 'Add',
+  'label.remove': 'Remove',
   'label.noResults': 'No results found.',
   'label.actions': 'Actions',
 
