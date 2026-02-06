@@ -1,0 +1,75 @@
+# ========================
+# Java / Maven
+# ========================
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+hs_err_pid*
+replay_pid*
+
+# ========================
+# Node / Angular
+# ========================
+node_modules/
+dist/
+.angular/
+.npm
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ========================
+# IDE
+# ========================
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+.factorypath
+
+# ========================
+# OS
+# ========================
+.DS_Store
+Thumbs.db
+
+# ========================
+# Docker
+# ========================
+docker/data/
+
+# ========================
+# Environment / Secrets
+# ========================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+settings.xml
+.npmrc
+!.npmrc.template
+
+# ========================
+# Maven flatten plugin
+# ========================
+.flattened-pom.xml
+
+# ========================
+# Build artifacts
+# ========================
+*.bak
+*.tmp
+coverage/
+.nyc_output/
+test-results/

@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: customer_registry
+      POSTGRES_USER: cruser
+      POSTGRES_PASSWORD: crpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cruser -d customer_registry"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@1ff.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  java-build:
+    build:
+      context: .
+      dockerfile: Dockerfile.java
+    volumes:
+      - ../:/workspace
+      - maven-cache:/root/.m2
+    working_dir: /workspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/customer_registry
+      SPRING_DATASOURCE_USERNAME: cruser
+      SPRING_DATASOURCE_PASSWORD: crpassword
+
+  node-build:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+    volumes:
+      - ../frontend:/workspace
+      - node-cache:/root/.npm
+    working_dir: /workspace
+
+volumes:
+  postgres-data:
+  maven-cache:
+  node-cache:

@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
+  "version": 1,
+  "cli": {
+    "packageManager": "npm"
+  },
+  "newProjectRoot": "projects",
+  "projects": {
+    "customer-registry-ui": {
+      "projectType": "library",
+      "root": "projects/customer-registry-ui",
+      "sourceRoot": "projects/customer-registry-ui/src",
+      "prefix": "crui",
+      "architect": {
+        "build": {
+          "builder": "@angular-devkit/build-angular:ng-packagr",
+          "options": {
+            "project": "projects/customer-registry-ui/ng-package.json"
+          },
+          "configurations": {
+            "production": {
+              "tsConfig": "projects/customer-registry-ui/tsconfig.lib.prod.json"
+            },
+            "development": {
+              "tsConfig": "projects/customer-registry-ui/tsconfig.lib.json"
+            }
+          },
+          "defaultConfiguration": "production"
+        }
+      }
+    }
+  }
+}

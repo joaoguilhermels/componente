@@ -1,0 +1,8 @@
+FROM node:20-alpine
+
+RUN apk add --no-cache bash git \
+    && npm install -g @angular/cli@17
+
+WORKDIR /workspace
+
+CMD ["node", "--version"]
