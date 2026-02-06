@@ -6,7 +6,9 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "jest --config projects/customer-registry-ui/jest.config.ts"
+    "test": "jest --config projects/customer-registry-ui/jest.config.ts",
+    "test:example": "jest --config projects/example-crm-app/jest.config.ts",
+    "test:all": "jest --projects projects/customer-registry-ui/jest.config.ts projects/example-crm-app/jest.config.ts"
   },
   "private": true,
   "dependencies": {

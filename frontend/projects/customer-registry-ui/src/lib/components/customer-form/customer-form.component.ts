@@ -99,7 +99,7 @@ import { cnpjValidator } from '../../validators/cnpj.validator';
             <crui-safe-field-renderer
               [registration]="registration"
               [labelKey]="field.labelKey"
-              [formControl]="getExtraFieldControl(field.key)"
+              [control]="getExtraFieldControl(field.key)"
               [disabled]="form.disabled">
             </crui-safe-field-renderer>
           } @else {

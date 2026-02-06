@@ -35,6 +35,7 @@
     <modules>
         <module>customer-registry-bom</module>
         <module>customer-registry-starter</module>
+        <module>customer-registry-client-example-backend</module>
     </modules>
 
     <dependencyManagement>

@@ -61,7 +61,7 @@ import { CUSTOMER_UI_RENDERER_ERROR_REPORTER } from '../../tokens';
 export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
   @Input() registration!: FieldRendererRegistration;
   @Input() labelKey = '';
-  @Input() formControl!: FormControl;
+  @Input() control!: FormControl;
   @Input() disabled = false;
 
   @ViewChild('rendererHost', { read: ViewContainerRef, static: false })
@@ -75,7 +75,7 @@ export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
   private readonly cdr = inject(ChangeDetectorRef);
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['registration'] || changes['formControl']) {
+    if (changes['registration'] || changes['control']) {
       this.tryCreateRenderer();
     }
     if (changes['disabled']) {
@@ -110,11 +110,11 @@ export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
 
       // Inject context into the renderer
       const context: FieldRendererContext = {
-        key: this.formControl?.value ?? '',
-        value: this.formControl?.value,
+        key: this.control?.value ?? '',
+        value: this.control?.value,
         disabled: this.disabled,
         onChange: (value: unknown) => {
-          this.formControl?.setValue(value);
+          this.control?.setValue(value);
         },
       };
 
@@ -133,11 +133,11 @@ export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
 
   private activateFallback(rendererId: string, error?: unknown): void {
     this.useFallback.set(true);
-    this.fallbackControl.setValue(this.formControl?.value ?? '');
+    this.fallbackControl.setValue(this.control?.value ?? '');
 
     // Sync fallback control with the form control
     this.fallbackControl.valueChanges.subscribe((value) => {
-      this.formControl?.setValue(value);
+      this.control?.setValue(value);
     });
 
     if (error) {

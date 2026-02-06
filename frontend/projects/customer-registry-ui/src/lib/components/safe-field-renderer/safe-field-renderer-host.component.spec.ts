@@ -58,7 +58,7 @@ describe('SafeFieldRendererHostComponent', () => {
 
     fixture = TestBed.createComponent(SafeFieldRendererHostComponent);
     component = fixture.componentInstance;
-    component.formControl = new FormControl('test-value');
+    component.control = new FormControl('test-value');
     component.labelKey = 'field.document';
   });
 
