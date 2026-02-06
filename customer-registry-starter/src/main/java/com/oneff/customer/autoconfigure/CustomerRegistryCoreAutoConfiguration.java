@@ -1,0 +1,62 @@
+package com.oneff.customer.autoconfigure;
+
+import com.oneff.customer.core.port.CustomerEventPublisher;
+import com.oneff.customer.core.port.CustomerRepository;
+import com.oneff.customer.core.service.CustomerRegistryService;
+import com.oneff.customer.core.spi.CustomerEnricher;
+import com.oneff.customer.core.spi.CustomerValidator;
+
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.MessageSource;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.support.ReloadableResourceBundleMessageSource;
+
+import java.util.List;
+
+/**
+ * Core auto-configuration for Customer Registry.
+ *
+ * <p>Gated by {@code customer.registry.enabled=true}. Registers the domain service,
+ * fallback repository (in-memory), and fallback event publisher (no-op).
+ * All beans use {@code @ConditionalOnMissingBean} so consumers can override.</p>
+ */
+@AutoConfiguration
+@ConditionalOnProperty(name = "customer.registry.enabled", havingValue = "true")
+@EnableConfigurationProperties(CustomerRegistryProperties.class)
+public class CustomerRegistryCoreAutoConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean
+    public CustomerRepository customerRepository() {
+        return new InMemoryCustomerRepository();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public CustomerEventPublisher customerEventPublisher() {
+        return new NoOpEventPublisher();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public CustomerRegistryService customerRegistryService(
+            List<CustomerValidator> validators,
+            List<CustomerEnricher> enrichers,
+            CustomerRepository repository,
+            CustomerEventPublisher eventPublisher) {
+        return new CustomerRegistryService(validators, enrichers, repository, eventPublisher);
+    }
+
+    @Bean("customerRegistryMessageSource")
+    @ConditionalOnMissingBean(name = "customerRegistryMessageSource")
+    public MessageSource customerRegistryMessageSource() {
+        ReloadableResourceBundleMessageSource messageSource =
+            new ReloadableResourceBundleMessageSource();
+        messageSource.setBasename("classpath:messages/customer-registry-messages");
+        messageSource.setDefaultEncoding("UTF-8");
+        return messageSource;
+    }
+}

@@ -1,0 +1,21 @@
+server:
+  port: 8080
+
+# Enable all Customer Registry Starter features
+customer:
+  registry:
+    enabled: true
+    features:
+      rest-api: true
+      publish-events: true
+
+# Actuator endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+spring:
+  application:
+    name: example-crm

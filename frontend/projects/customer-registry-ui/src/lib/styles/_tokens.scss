@@ -1,0 +1,45 @@
+/**
+ * CSS Custom Properties (Design Tokens) for Customer Registry UI.
+ *
+ * Host apps can override these in their global styles:
+ * :root {
+ *   --crui-primary: #6200ea;
+ *   --crui-spacing-md: 20px;
+ * }
+ */
+
+:root {
+  // Colors
+  --crui-primary: #1976d2;
+  --crui-primary-light: #42a5f5;
+  --crui-primary-dark: #1565c0;
+  --crui-accent: #ff4081;
+  --crui-warn: #f44336;
+
+  // Text
+  --crui-text-primary: rgba(0, 0, 0, 0.87);
+  --crui-text-secondary: rgba(0, 0, 0, 0.54);
+  --crui-text-disabled: rgba(0, 0, 0, 0.38);
+
+  // Background
+  --crui-bg: #ffffff;
+  --crui-bg-card: #ffffff;
+  --crui-hover-bg: rgba(0, 0, 0, 0.04);
+
+  // Spacing
+  --crui-spacing-xs: 4px;
+  --crui-spacing-sm: 8px;
+  --crui-spacing-md: 16px;
+  --crui-spacing-lg: 24px;
+  --crui-spacing-xl: 32px;
+
+  // Border radius
+  --crui-border-radius: 4px;
+  --crui-border-radius-lg: 8px;
+
+  // Status badges
+  --crui-status-draft-bg: #e0e0e0;
+  --crui-status-active-bg: #c8e6c9;
+  --crui-status-suspended-bg: #fff9c4;
+  --crui-status-closed-bg: #ffcdd2;
+}

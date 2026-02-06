@@ -1,0 +1,34 @@
+/**
+ * Reusable SCSS mixins for Customer Registry UI components.
+ */
+
+/// Card-like container with standard padding and border radius
+@mixin crui-card {
+  background: var(--crui-bg-card, #ffffff);
+  border-radius: var(--crui-border-radius-lg, 8px);
+  padding: var(--crui-spacing-md, 16px);
+}
+
+/// Responsive grid with auto-fit columns
+@mixin crui-responsive-grid($min-width: 200px) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax($min-width, 1fr));
+  gap: var(--crui-spacing-md, 16px);
+}
+
+/// Flex row with standard gap
+@mixin crui-flex-row($gap: var(--crui-spacing-sm, 8px)) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $gap;
+  align-items: center;
+}
+
+/// Status badge base style
+@mixin crui-status-badge {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-block;
+}

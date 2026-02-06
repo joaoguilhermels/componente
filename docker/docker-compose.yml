@@ -33,6 +33,7 @@ services:
     volumes:
       - ../:/workspace
       - maven-cache:/root/.m2
+      - /var/run/docker.sock:/var/run/docker.sock
     working_dir: /workspace
     depends_on:
       postgres:
@@ -41,6 +42,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/customer_registry
       SPRING_DATASOURCE_USERNAME: cruser
       SPRING_DATASOURCE_PASSWORD: crpassword
+      TESTCONTAINERS_RYUK_DISABLED: "true"
 
   node-build:
     build:
