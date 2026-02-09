@@ -137,6 +137,21 @@ levels. Not every service needs every pattern:
 
 Start with the patterns you need today and adopt more as complexity grows.
 
+## Copilot Chat Migration Workflow
+
+For a guided, prompt-driven migration workflow using GitHub Copilot Chat, see:
+
+| Document | Purpose |
+|----------|---------|
+| [Copilot Migration Strategy](../docs/copilot-migration-strategy.md) | Step-by-step process guide with workspace setup, phased execution, and troubleshooting |
+| [Copilot Prompts Library](copilot-prompts.md) | Ready-to-paste prompts for each migration phase (0-5), with expected outputs and recovery |
+| [Migration Workflow Instructions](template/.github/instructions/migration-workflow.instructions.md) | Instruction file Copilot Chat reads automatically via `.github/instructions/` |
+| [Lessons Learned Template](template/MIGRATION-LESSONS.md.template) | Post-migration feedback template for continuous improvement |
+
+The workflow uses a multi-root VS Code workspace with three directories (`reference/`,
+`legacy/`, `target/`) and follows the "read reference -> analyze legacy -> generate code"
+pattern to ensure Copilot adheres to architectural rules.
+
 ## Reference Implementation
 
 The `customer-registry-starter` module in this repository is the reference

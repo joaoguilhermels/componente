@@ -1240,6 +1240,24 @@ Requirements:
 AI provides early feedback during development. Tests are the hard gate in CI. Both are
 necessary; neither is sufficient alone.
 
+### Copilot Chat Migration Workflow
+
+For a complete, step-by-step workflow using GitHub Copilot Chat with a multi-root VS Code
+workspace (reference + legacy + target directories), see:
+
+- **[Copilot Migration Strategy](copilot-migration-strategy.md)** -- Full process guide
+  with workspace setup, phased execution, verification checklists, and troubleshooting
+- **[Copilot Prompts Library](../migration/copilot-prompts.md)** -- Ready-to-paste prompts
+  for each migration phase, with expected outputs and recovery instructions
+- **[Migration Workflow Instructions](../migration/template/.github/instructions/migration-workflow.instructions.md)** --
+  Instruction file that Copilot Chat reads automatically via `.github/instructions/`
+- **[Lessons Learned Template](../migration/template/MIGRATION-LESSONS.md.template)** --
+  Post-migration feedback template for continuous improvement of the migration framework
+
+The Copilot Chat workflow follows the same phased approach (Phase 0-5) described above,
+with explicit prompts designed to prevent common violations (JPA in core, public controllers,
+`matchIfMissing = true`, `@ComponentScan` in auto-config, etc.).
+
 ---
 
 ## 10. Pragmatic vs. Strict Hexagonal
