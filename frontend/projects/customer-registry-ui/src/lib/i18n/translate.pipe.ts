@@ -7,15 +7,14 @@ import { CustomerI18nService } from './customer-i18n.service';
  * Usage: {{ 'label.customer' | translate }}
  * With params: {{ 'validation.minLength' | translate:3 }}
  *
- * Marked as impure so Angular re-evaluates on every change detection
- * cycle, allowing locale switches to take effect immediately.
- * Internal caching (locale + key + params) prevents redundant lookups
- * when neither the locale nor the inputs have changed.
+ * Marked as pure with internal caching. The pipe reads the
+ * currentLocale() signal on each invocation and compares it to the
+ * cached locale, so locale switches invalidate the cache correctly.
  */
 @Pipe({
   name: 'translate',
   standalone: true,
-  pure: false,
+  pure: true,
 })
 export class TranslatePipe implements PipeTransform {
   private readonly i18n = inject(CustomerI18nService);

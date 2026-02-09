@@ -57,6 +57,23 @@ class CustomerEventValidationTest {
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("occurredAt");
         }
+
+        @Test
+        void shouldGenerateDeterministicEventId() {
+            var event1 = CustomerCreated.of(ID, CustomerType.PF);
+            var event2 = CustomerCreated.of(ID, CustomerType.PF);
+
+            assertThat(event1.eventId()).isEqualTo(event2.eventId());
+        }
+
+        @Test
+        void shouldGenerateDifferentEventIdForDifferentCustomers() {
+            var otherId = UUID.randomUUID();
+            var event1 = CustomerCreated.of(ID, CustomerType.PF);
+            var event2 = CustomerCreated.of(otherId, CustomerType.PF);
+
+            assertThat(event1.eventId()).isNotEqualTo(event2.eventId());
+        }
     }
 
     @Nested
@@ -91,6 +108,14 @@ class CustomerEventValidationTest {
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("occurredAt");
         }
+
+        @Test
+        void shouldGenerateDeterministicEventId() {
+            var event1 = CustomerDeleted.of(ID);
+            var event2 = CustomerDeleted.of(ID);
+
+            assertThat(event1.eventId()).isEqualTo(event2.eventId());
+        }
     }
 
     @Nested
@@ -124,6 +149,14 @@ class CustomerEventValidationTest {
             assertThatThrownBy(() -> new CustomerUpdated(EVENT_ID, ID, null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("occurredAt");
+        }
+
+        @Test
+        void shouldGenerateDeterministicEventId() {
+            var event1 = CustomerUpdated.of(ID);
+            var event2 = CustomerUpdated.of(ID);
+
+            assertThat(event1.eventId()).isEqualTo(event2.eventId());
         }
     }
 
@@ -174,6 +207,14 @@ class CustomerEventValidationTest {
             assertThatThrownBy(() -> new CustomerStatusChanged(EVENT_ID, ID, CustomerStatus.DRAFT, CustomerStatus.ACTIVE, null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("occurredAt");
+        }
+
+        @Test
+        void shouldGenerateDeterministicEventId() {
+            var event1 = CustomerStatusChanged.of(ID, CustomerStatus.DRAFT, CustomerStatus.ACTIVE);
+            var event2 = CustomerStatusChanged.of(ID, CustomerStatus.DRAFT, CustomerStatus.ACTIVE);
+
+            assertThat(event1.eventId()).isEqualTo(event2.eventId());
         }
     }
 }

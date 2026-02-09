@@ -13,7 +13,7 @@ import org.slf4j.LoggerFactory;
  * No-op implementation of {@link CustomerEventPublisher}.
  *
  * <p>Used as a fallback when event publishing is disabled.
- * Logs discarded events at WARN level so operators are aware events are being lost.</p>
+ * Logs a WARN at startup; individual discards are logged at DEBUG.</p>
  */
 // Fallback publisher when publish-events feature is disabled.
 // Registered by CoreAutoConfiguration via @ConditionalOnMissingBean.
@@ -25,26 +25,26 @@ class NoOpEventPublisher implements CustomerEventPublisher {
     NoOpEventPublisher() {
         log.warn("Customer Registry event publishing is DISABLED. "
             + "Events will NOT be published. To enable, add spring-events adapter to classpath "
-            + "and set customer.registry.features.events=true");
+            + "and set customer.registry.features.publish-events=true");
     }
 
     @Override
     public void publish(CustomerCreated event) {
-        log.warn("Event publishing disabled — discarding CustomerCreated: customerId={}", event.customerId());
+        log.debug("Event publishing disabled — discarding CustomerCreated: customerId={}", event.customerId());
     }
 
     @Override
     public void publish(CustomerUpdated event) {
-        log.warn("Event publishing disabled — discarding CustomerUpdated: customerId={}", event.customerId());
+        log.debug("Event publishing disabled — discarding CustomerUpdated: customerId={}", event.customerId());
     }
 
     @Override
     public void publish(CustomerStatusChanged event) {
-        log.warn("Event publishing disabled — discarding CustomerStatusChanged: customerId={}", event.customerId());
+        log.debug("Event publishing disabled — discarding CustomerStatusChanged: customerId={}", event.customerId());
     }
 
     @Override
     public void publish(CustomerDeleted event) {
-        log.warn("Event publishing disabled — discarding CustomerDeleted: customerId={}", event.customerId());
+        log.debug("Event publishing disabled — discarding CustomerDeleted: customerId={}", event.customerId());
     }
 }
