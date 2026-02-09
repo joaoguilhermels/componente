@@ -13,85 +13,118 @@ import { CustomerRegistryApiClient } from './customer-registry-api-client.servic
 export class CustomerStateService {
   private readonly api = inject(CustomerRegistryApiClient);
 
+  /** All customers in the current page (internal writable signal) */
+  private readonly _customers = signal<Customer[]>([]);
+
+  /** Currently selected customer (internal writable signal) */
+  private readonly _selectedCustomer = signal<Customer | null>(null);
+
+  /** Whether an API operation is in progress (internal writable signal) */
+  private readonly _loading = signal<boolean>(false);
+
+  /** Last error message (internal writable signal) */
+  private readonly _error = signal<string | null>(null);
+
+  /** Total number of customers matching the current search (internal writable signal) */
+  private readonly _totalCount = signal<number>(0);
+
+  /** Current page index, 0-based (internal writable signal) */
+  private readonly _currentPage = signal<number>(0);
+
+  /** Page size (internal writable signal) */
+  private readonly _pageSize = signal<number>(20);
+
   /** All customers in the current page */
-  readonly customers = signal<Customer[]>([]);
+  readonly customers = this._customers.asReadonly();
 
   /** Currently selected customer (detail view) */
-  readonly selectedCustomer = signal<Customer | null>(null);
+  readonly selectedCustomer = this._selectedCustomer.asReadonly();
 
   /** Whether an API operation is in progress */
-  readonly loading = signal<boolean>(false);
+  readonly loading = this._loading.asReadonly();
 
   /** Last error message, or null if none */
-  readonly error = signal<string | null>(null);
+  readonly error = this._error.asReadonly();
 
   /** Total number of customers matching the current search */
-  readonly totalCount = signal<number>(0);
+  readonly totalCount = this._totalCount.asReadonly();
 
   /** Current page index (0-based) */
-  readonly currentPage = signal<number>(0);
+  readonly currentPage = this._currentPage.asReadonly();
 
   /** Page size */
-  readonly pageSize = signal<number>(20);
+  readonly pageSize = this._pageSize.asReadonly();
 
   /** Whether the customer list is empty */
-  readonly isEmpty = computed(() => this.customers().length === 0 && !this.loading());
+  readonly isEmpty = computed(() => this._customers().length === 0 && !this._loading());
 
   /** Load customers with optional search params */
   loadCustomers(params: CustomerSearchParams = {}): void {
-    this.loading.set(true);
-    this.error.set(null);
+    this._loading.set(true);
+    this._error.set(null);
 
     const searchParams: CustomerSearchParams = {
-      page: this.currentPage(),
-      size: this.pageSize(),
+      page: this._currentPage(),
+      size: this._pageSize(),
       ...params,
     };
 
     this.api.search(searchParams).subscribe({
       next: (response) => {
-        this.customers.set(response.content);
-        this.totalCount.set(response.totalElements);
-        this.currentPage.set(response.page);
-        this.loading.set(false);
+        this._customers.set(response.content);
+        this._totalCount.set(response.totalElements);
+        this._currentPage.set(response.page);
+        this._loading.set(false);
       },
       error: (err) => {
-        this.error.set(err.error?.detail ?? err.message ?? 'Unknown error');
-        this.loading.set(false);
+        this._error.set(this.extractErrorMessage(err));
+        this._loading.set(false);
       },
     });
   }
 
   /** Load a single customer by ID */
   loadCustomer(id: string): void {
-    this.loading.set(true);
-    this.error.set(null);
+    this._loading.set(true);
+    this._error.set(null);
 
     this.api.findById(id).subscribe({
       next: (customer) => {
-        this.selectedCustomer.set(customer);
-        this.loading.set(false);
+        this._selectedCustomer.set(customer);
+        this._loading.set(false);
       },
       error: (err) => {
-        this.error.set(err.error?.detail ?? err.message ?? 'Unknown error');
-        this.loading.set(false);
+        this._error.set(this.extractErrorMessage(err));
+        this._loading.set(false);
       },
     });
   }
 
   /** Clear current error */
   clearError(): void {
-    this.error.set(null);
+    this._error.set(null);
   }
 
   /** Clear selected customer */
   clearSelection(): void {
-    this.selectedCustomer.set(null);
+    this._selectedCustomer.set(null);
   }
 
   /** Update page and reload */
   goToPage(page: number): void {
-    this.currentPage.set(page);
+    this._currentPage.set(page);
     this.loadCustomers();
+  }
+
+  private extractErrorMessage(err: unknown): string {
+    if (err == null || typeof err !== 'object') {
+      return 'Unknown error';
+    }
+    const httpErr = err as Record<string, unknown>;
+    const detail = (httpErr['error'] as Record<string, unknown> | undefined)?.['detail'];
+    if (typeof detail === 'string') return detail;
+    const message = httpErr['message'];
+    if (typeof message === 'string') return message;
+    return 'Unknown error';
   }
 }

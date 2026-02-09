@@ -11,17 +11,20 @@ final class CustomerEntityMapper {
 
     private CustomerEntityMapper() {}
 
-    static CustomerEntity toEntity(Customer customer) {
+    static CustomerEntity toEntity(Customer customer, boolean isNew) {
         var entity = new CustomerEntity();
         entity.setId(customer.getId());
         entity.setType(customer.getType());
         entity.setDocumentNumber(customer.getDocument().number());
         entity.setDisplayName(customer.getDisplayName());
         entity.setStatus(customer.getStatus());
-        entity.setAttributesJson(AttributesJsonConverter.toJson(customer.getAttributes()));
+        entity.setAttributesJson(AttributesJsonSerializer.toJson(customer.getAttributes()));
         entity.setSchemaVersion(customer.getAttributes().schemaVersion());
         entity.setCreatedAt(customer.getCreatedAt());
         entity.setUpdatedAt(customer.getUpdatedAt());
+        if (isNew) {
+            entity.markAsNew();
+        }
 
         List<AddressEntity> addressEntities = customer.getAddresses().stream()
             .map(addr -> toAddressEntity(addr, entity))
@@ -38,7 +41,7 @@ final class CustomerEntityMapper {
 
     static Customer toDomain(CustomerEntity entity) {
         Document document = new Document(entity.getType(), entity.getDocumentNumber());
-        Attributes attributes = AttributesJsonConverter.fromJson(entity.getAttributesJson());
+        Attributes attributes = AttributesJsonSerializer.fromJson(entity.getAttributesJson());
 
         List<Address> addresses = entity.getAddresses().stream()
             .map(CustomerEntityMapper::toAddressDomain)

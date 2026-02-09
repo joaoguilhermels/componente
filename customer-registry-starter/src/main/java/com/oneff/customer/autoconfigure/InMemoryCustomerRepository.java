@@ -1,6 +1,7 @@
 package com.oneff.customer.autoconfigure;
 
 import com.oneff.customer.core.model.Customer;
+import com.oneff.customer.core.model.CustomerPage;
 import com.oneff.customer.core.model.Document;
 import com.oneff.customer.core.port.CustomerRepository;
 
@@ -48,5 +49,20 @@ class InMemoryCustomerRepository implements CustomerRepository {
     @Override
     public List<Customer> findAll() {
         return new ArrayList<>(store.values());
+    }
+
+    @Override
+    public CustomerPage findAll(int page, int size) {
+        List<Customer> all = new ArrayList<>(store.values());
+        long totalElements = all.size();
+        int fromIndex = Math.min(page * size, all.size());
+        int toIndex = Math.min(fromIndex + size, all.size());
+        List<Customer> pageContent = all.subList(fromIndex, toIndex);
+        return new CustomerPage(pageContent, totalElements, page, size);
+    }
+
+    @Override
+    public void deleteById(UUID id) {
+        store.remove(id);
     }
 }

@@ -15,13 +15,20 @@ import java.util.List;
  * <ol>
  *   <li>Acquires a PostgreSQL advisory lock (non-blocking)</li>
  *   <li>Reads the minimum {@code schema_version} from {@code cr_customer}</li>
- *   <li>Applies registered {@link AttributeSchemaMigration}s sequentially (V1→V2→V3)</li>
+ *   <li>Applies registered {@link AttributeSchemaMigration}s sequentially (V1&rarr;V2&rarr;V3)</li>
  *   <li>Batch-updates the JSONB column and {@code schema_version} for affected rows</li>
  *   <li>Releases the lock</li>
  * </ol>
  *
  * <p>If the lock is already held by another node, migration is skipped
  * unless {@code strict} mode is enabled (which throws an exception).</p>
+ *
+ * <p><strong>Concurrency constraint:</strong> Attribute schema migrations operate
+ * directly on the database via JDBC, bypassing JPA entirely. They must <em>not</em>
+ * run concurrently with JPA operations on the same rows, as JPA's first-level cache
+ * would become stale. In practice, this means migrations should run during application
+ * startup (before the JPA {@code EntityManager} serves requests) or during a
+ * maintenance window.</p>
  */
 public class AttributeMigrationService {
 

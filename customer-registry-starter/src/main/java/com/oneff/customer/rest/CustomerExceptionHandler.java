@@ -1,18 +1,23 @@
 package com.oneff.customer.rest;
 
+import com.oneff.customer.core.exception.CustomerNotFoundException;
 import com.oneff.customer.core.exception.CustomerValidationException;
 import com.oneff.customer.core.exception.DocumentValidationException;
 import com.oneff.customer.core.exception.DuplicateDocumentException;
 import com.oneff.customer.core.exception.InvalidStatusTransitionException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.List;
 import java.util.Locale;
@@ -25,6 +30,8 @@ import java.util.Locale;
  */
 @RestControllerAdvice(basePackageClasses = CustomerController.class)
 class CustomerExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(CustomerExceptionHandler.class);
 
     private final MessageSource messageSource;
 
@@ -99,23 +106,49 @@ class CustomerExceptionHandler {
         return problem;
     }
 
+    @ExceptionHandler(CustomerNotFoundException.class)
+    ProblemDetail handleCustomerNotFound(CustomerNotFoundException ex) {
+        Locale locale = LocaleContextHolder.getLocale();
+        String message = messageSource.getMessage(
+            "customer.registry.error.customer.not_found", null, ex.getMessage(), locale);
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.NOT_FOUND, message);
+        problem.setTitle("Customer Not Found");
+        return problem;
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    ProblemDetail handleMessageNotReadable(HttpMessageNotReadableException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_REQUEST, "Malformed request body");
+        problem.setTitle("Bad Request");
+        return problem;
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    ProblemDetail handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        String detail = "Invalid value for parameter '" + ex.getName() + "'";
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_REQUEST, detail);
+        problem.setTitle("Bad Request");
+        return problem;
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     ProblemDetail handleIllegalArgument(IllegalArgumentException ex) {
-        Locale locale = LocaleContextHolder.getLocale();
-
-        // Check if this is a "Customer not found" error from the service
-        if (ex.getMessage() != null && ex.getMessage().contains("Customer not found")) {
-            String message = messageSource.getMessage(
-                "customer.registry.error.customer.not_found", null, ex.getMessage(), locale);
-            ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-                HttpStatus.NOT_FOUND, message);
-            problem.setTitle("Customer Not Found");
-            return problem;
-        }
-
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
             HttpStatus.BAD_REQUEST, ex.getMessage());
         problem.setTitle("Bad Request");
+        return problem;
+    }
+
+    @ExceptionHandler(Exception.class)
+    ProblemDetail handleGenericException(Exception ex) {
+        log.error("Unexpected error in Customer Registry REST API", ex);
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
+        problem.setTitle("Internal Server Error");
         return problem;
     }
 }

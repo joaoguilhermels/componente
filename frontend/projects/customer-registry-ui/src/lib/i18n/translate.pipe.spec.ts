@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TranslatePipe } from './translate.pipe';
 import { CustomerI18nService } from './customer-i18n.service';
@@ -8,6 +9,7 @@ describe('TranslatePipe', () => {
 
   beforeEach(() => {
     const mockService = {
+      currentLocale: signal('pt-BR'),
       translate: jest.fn((key: string, ...params: (string | number)[]) => {
         if (key === 'label.customer') return 'Cliente';
         if (key === 'validation.minLength') return `Mínimo de ${params[0]} caracteres.`;

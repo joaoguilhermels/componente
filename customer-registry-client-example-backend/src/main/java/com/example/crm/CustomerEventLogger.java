@@ -19,8 +19,8 @@ public class CustomerEventLogger {
 
     @EventListener
     public void onCustomerCreated(CustomerCreated event) {
-        log.info("[ExampleCRM] Customer created: id={}, document={}",
-            event.customerId(), event.document());
+        log.info("[ExampleCRM] Customer created: id={}, type={}",
+            event.customerId(), event.customerType());
     }
 
     @EventListener

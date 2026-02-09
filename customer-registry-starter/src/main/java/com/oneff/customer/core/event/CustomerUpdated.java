@@ -18,7 +18,7 @@ public record CustomerUpdated(
 ) {
     public static CustomerUpdated of(UUID customerId) {
         return new CustomerUpdated(
-            UUID.nameUUIDFromBytes(("updated:" + customerId + ":" + Instant.now()).getBytes()),
+            UUID.nameUUIDFromBytes(("updated:" + customerId).getBytes()),
             customerId, Instant.now()
         );
     }

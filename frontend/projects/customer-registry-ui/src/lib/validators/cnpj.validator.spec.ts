@@ -32,9 +32,11 @@ describe('cnpjValidator', () => {
     expect(validate('112223330001811')).toEqual({ cnpjInvalid: true });
   });
 
-  it('should reject all-same-digit CNPJs', () => {
-    expect(validate('11111111111111')).toEqual({ cnpjInvalid: true });
-    expect(validate('00000000000000')).toEqual({ cnpjInvalid: true });
+  it('should reject all-same-digit CNPJs for all 10 digits', () => {
+    for (let d = 0; d <= 9; d++) {
+      const cnpj = String(d).repeat(14);
+      expect(validate(cnpj)).toEqual({ cnpjInvalid: true });
+    }
   });
 
   it('should accept another valid CNPJ', () => {

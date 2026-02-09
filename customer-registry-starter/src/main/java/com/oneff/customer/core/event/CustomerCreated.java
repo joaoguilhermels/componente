@@ -11,20 +11,18 @@ import java.util.UUID;
  * @param eventId      deterministic UUID for idempotent processing
  * @param customerId   the newly created customer's ID
  * @param customerType PF or PJ
- * @param document     raw document number
  * @param occurredAt   timestamp of the event
  */
 public record CustomerCreated(
     UUID eventId,
     UUID customerId,
     CustomerType customerType,
-    String document,
     Instant occurredAt
 ) {
-    public static CustomerCreated of(UUID customerId, CustomerType type, String document) {
+    public static CustomerCreated of(UUID customerId, CustomerType type) {
         return new CustomerCreated(
             UUID.nameUUIDFromBytes(("created:" + customerId).getBytes()),
-            customerId, type, document, Instant.now()
+            customerId, type, Instant.now()
         );
     }
 }

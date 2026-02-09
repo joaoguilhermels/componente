@@ -6,7 +6,6 @@ import {
   Input,
   OnChanges,
   OnInit,
-  Optional,
   Output,
   SimpleChanges,
 } from '@angular/core';
@@ -100,6 +99,7 @@ import { cnpjValidator } from '../../validators/cnpj.validator';
               [registration]="registration"
               [labelKey]="field.labelKey"
               [control]="getExtraFieldControl(field.key)"
+              [fieldKey]="field.key"
               [disabled]="form.disabled">
             </crui-safe-field-renderer>
           } @else {
@@ -161,10 +161,16 @@ import { cnpjValidator } from '../../validators/cnpj.validator';
   `],
 })
 export class CustomerFormComponent implements OnInit, OnChanges {
+  /** Customer to edit. When null, the form operates in create mode. Default: null. */
   @Input() customer: Customer | null = null;
+
+  /** Whether the form is in edit mode (disables type and document fields). Default: false. */
   @Input() editMode = false;
 
+  /** Emits the CreateCustomerRequest payload when the form is submitted */
   @Output() readonly submitForm = new EventEmitter<CreateCustomerRequest>();
+
+  /** Emits when the user clicks the cancel button */
   @Output() readonly cancel = new EventEmitter<void>();
 
   private readonly fb = inject(FormBuilder);

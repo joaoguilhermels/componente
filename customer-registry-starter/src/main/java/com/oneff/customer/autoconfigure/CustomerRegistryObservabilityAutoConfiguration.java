@@ -18,7 +18,7 @@ import org.springframework.context.annotation.Bean;
  * Micrometer is on the classpath. Registers the metrics facade.</p>
  */
 @AutoConfiguration(after = CustomerRegistryCoreAutoConfiguration.class)
-@ConditionalOnProperty(name = "customer.registry.enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = "customer.registry.features", name = "observability", havingValue = "true")
 @ConditionalOnClass(MeterRegistry.class)
 public class CustomerRegistryObservabilityAutoConfiguration {
 

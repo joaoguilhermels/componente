@@ -15,6 +15,10 @@ RUN apk add --no-cache curl bash docker-cli \
 ENV MAVEN_HOME=/opt/maven
 ENV MAVEN_OPTS="-XX:MaxMetaspaceSize=512m -Xmx1g"
 
+RUN addgroup -S builder && adduser -S builder -G builder
+RUN mkdir -p /home/builder/.m2 && chown -R builder:builder /home/builder
+USER builder
+
 WORKDIR /workspace
 
 CMD ["mvn", "--version"]

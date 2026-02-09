@@ -1,6 +1,7 @@
 package com.oneff.customer.autoconfigure;
 
 import com.oneff.customer.core.event.CustomerCreated;
+import com.oneff.customer.core.event.CustomerDeleted;
 import com.oneff.customer.core.event.CustomerStatusChanged;
 import com.oneff.customer.core.event.CustomerUpdated;
 import com.oneff.customer.core.port.CustomerEventPublisher;
@@ -30,6 +31,11 @@ class NoOpEventPublisher implements CustomerEventPublisher {
 
     @Override
     public void publish(CustomerStatusChanged event) {
+        log.debug("Event publishing disabled — would publish: {}", event);
+    }
+
+    @Override
+    public void publish(CustomerDeleted event) {
         log.debug("Event publishing disabled — would publish: {}", event);
     }
 }

@@ -1,6 +1,7 @@
 package com.oneff.customer.events;
 
 import com.oneff.customer.core.event.CustomerCreated;
+import com.oneff.customer.core.event.CustomerDeleted;
 import com.oneff.customer.core.event.CustomerStatusChanged;
 import com.oneff.customer.core.event.CustomerUpdated;
 import com.oneff.customer.core.model.CustomerStatus;
@@ -29,8 +30,7 @@ class SpringEventPublisherAdapterTest {
     @Test
     @DisplayName("should publish CustomerCreated via ApplicationEventPublisher")
     void publishCustomerCreated() {
-        CustomerCreated event = CustomerCreated.of(
-            UUID.randomUUID(), CustomerType.PF, "52998224725");
+        CustomerCreated event = CustomerCreated.of(UUID.randomUUID(), CustomerType.PF);
 
         adapter.publish(event);
 
@@ -52,6 +52,16 @@ class SpringEventPublisherAdapterTest {
     void publishCustomerStatusChanged() {
         CustomerStatusChanged event = CustomerStatusChanged.of(
             UUID.randomUUID(), CustomerStatus.DRAFT, CustomerStatus.ACTIVE);
+
+        adapter.publish(event);
+
+        verify(applicationEventPublisher).publishEvent(event);
+    }
+
+    @Test
+    @DisplayName("should publish CustomerDeleted via ApplicationEventPublisher")
+    void publishCustomerDeleted() {
+        CustomerDeleted event = CustomerDeleted.of(UUID.randomUUID());
 
         adapter.publish(event);
 

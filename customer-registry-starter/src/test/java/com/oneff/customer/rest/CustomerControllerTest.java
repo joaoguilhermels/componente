@@ -1,10 +1,12 @@
 package com.oneff.customer.rest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.oneff.customer.core.exception.CustomerValidationException;
 import com.oneff.customer.core.exception.DocumentValidationException;
 import com.oneff.customer.core.exception.DuplicateDocumentException;
 import com.oneff.customer.core.exception.InvalidStatusTransitionException;
 import com.oneff.customer.core.model.*;
+import static org.mockito.ArgumentMatchers.anyInt;
 import com.oneff.customer.core.service.CustomerRegistryService;
 
 import org.junit.jupiter.api.DisplayName;
@@ -138,7 +140,7 @@ class CustomerControllerTest {
         @DisplayName("should return 409 for duplicate document")
         void rejectDuplicateDocument() throws Exception {
             when(service.register(any(Customer.class)))
-                .thenThrow(new DuplicateDocumentException(VALID_CPF));
+                .thenThrow(new DuplicateDocumentException());
 
             mockMvc.perform(post("/api/v1/customers")
                     .contentType(MediaType.APPLICATION_JSON)
@@ -162,6 +164,23 @@ class CustomerControllerTest {
                         """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.title").value("Document Validation Error"));
+        }
+
+        @Test
+        @DisplayName("should return 400 with errors array for CustomerValidationException")
+        void rejectWithValidationErrors() throws Exception {
+            when(service.register(any(Customer.class)))
+                .thenThrow(new CustomerValidationException(
+                    java.util.List.of("error.name.too_short", "error.missing.email")));
+
+            mockMvc.perform(post("/api/v1/customers")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {"type":"PF","document":"52998224725","displayName":"Test"}
+                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors").isArray())
+                .andExpect(jsonPath("$.errors", hasSize(2)));
         }
     }
 
@@ -231,27 +250,33 @@ class CustomerControllerTest {
     class FindAll {
 
         @Test
-        @DisplayName("should return list of customers")
+        @DisplayName("should return paginated list of customers")
         void returnCustomerList() throws Exception {
             Customer c1 = Customer.createPF(VALID_CPF, "Maria Silva");
             Customer c2 = Customer.createPJ(VALID_CNPJ, "Acme Ltda");
-            when(service.findAll()).thenReturn(List.of(c1, c2));
+            when(service.findAllPaginated(anyInt(), anyInt()))
+                .thenReturn(new CustomerPage(List.of(c1, c2), 2, 0, 20));
 
             mockMvc.perform(get("/api/v1/customers"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(2)))
-                .andExpect(jsonPath("$[0].type").value("PF"))
-                .andExpect(jsonPath("$[1].type").value("PJ"));
+                .andExpect(jsonPath("$.customers", hasSize(2)))
+                .andExpect(jsonPath("$.customers[0].type").value("PF"))
+                .andExpect(jsonPath("$.customers[1].type").value("PJ"))
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(20));
         }
 
         @Test
-        @DisplayName("should return empty list when no customers")
+        @DisplayName("should return empty page when no customers")
         void returnEmptyList() throws Exception {
-            when(service.findAll()).thenReturn(List.of());
+            when(service.findAllPaginated(anyInt(), anyInt()))
+                .thenReturn(new CustomerPage(List.of(), 0, 0, 20));
 
             mockMvc.perform(get("/api/v1/customers"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(0)));
+                .andExpect(jsonPath("$.customers", hasSize(0)))
+                .andExpect(jsonPath("$.totalElements").value(0));
         }
     }
 
@@ -327,6 +352,27 @@ class CustomerControllerTest {
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.title").value("Invalid Status Transition"));
         }
+
+        @Test
+        @DisplayName("should apply both displayName and status in single PATCH")
+        void updateDisplayNameAndStatus() throws Exception {
+            Customer customer = samplePfCustomer();
+            when(service.findById(customer.getId())).thenReturn(Optional.of(customer));
+            when(service.update(any(Customer.class))).thenReturn(customer);
+            when(service.changeStatus(customer.getId(), CustomerStatus.ACTIVE))
+                .thenReturn(customer);
+
+            mockMvc.perform(patch("/api/v1/customers/{id}", customer.getId())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {"displayName":"Maria Santos","status":"ACTIVE"}
+                        """))
+                .andExpect(status().isOk());
+
+            // Verify both operations were called
+            verify(service).update(any(Customer.class));
+            verify(service).changeStatus(customer.getId(), CustomerStatus.ACTIVE);
+        }
     }
 
     // ─── i18n ───────────────────────────────────────────────────
@@ -339,7 +385,7 @@ class CustomerControllerTest {
         @DisplayName("should return localized error for pt-BR")
         void localizedPtBr() throws Exception {
             when(service.register(any(Customer.class)))
-                .thenThrow(new DuplicateDocumentException(VALID_CPF));
+                .thenThrow(new DuplicateDocumentException());
 
             mockMvc.perform(post("/api/v1/customers")
                     .contentType(MediaType.APPLICATION_JSON)

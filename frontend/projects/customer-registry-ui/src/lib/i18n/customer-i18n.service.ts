@@ -1,4 +1,4 @@
-import { computed, inject, Injectable, signal } from '@angular/core';
+import { computed, inject, Injectable, isDevMode, signal } from '@angular/core';
 import {
   CUSTOMER_I18N_OVERRIDES,
   CUSTOMER_REGISTRY_UI_CONFIG,
@@ -36,9 +36,19 @@ export class CustomerI18nService {
    */
   translate(key: string, ...params: (string | number)[]): string {
     const map = this.translations();
-    let value = map[key] ?? key;
+    let value = map[key];
+
+    if (value === undefined) {
+      if (isDevMode()) {
+        console.warn(
+          `[CustomerRegistryUI i18n] Missing translation key "${key}" for locale "${this.currentLocale()}"`
+        );
+      }
+      value = key;
+    }
+
     params.forEach((param, i) => {
-      value = value.replace(`{${i}}`, String(param));
+      value = value!.replace(`{${i}}`, String(param));
     });
     return value;
   }

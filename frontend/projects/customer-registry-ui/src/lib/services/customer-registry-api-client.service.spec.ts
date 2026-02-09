@@ -154,4 +154,103 @@ describe('CustomerRegistryApiClient', () => {
       req.flush(null);
     });
   });
+
+  describe('HTTP error handling', () => {
+    it('should propagate 400 Bad Request errors', (done) => {
+      client.create({ type: 'PF', document: 'invalid', displayName: 'Test' }).subscribe({
+        error: (err) => {
+          expect(err.status).toBe(400);
+          done();
+        },
+      });
+
+      const req = httpMock.expectOne(baseUrl);
+      req.flush({ detail: 'Invalid document' }, { status: 400, statusText: 'Bad Request' });
+    });
+
+    it('should propagate 404 Not Found errors', (done) => {
+      const id = '550e8400-e29b-41d4-a716-446655440000';
+      client.findById(id).subscribe({
+        error: (err) => {
+          expect(err.status).toBe(404);
+          done();
+        },
+      });
+
+      const req = httpMock.expectOne(`${baseUrl}/${id}`);
+      req.flush({ detail: 'Not found' }, { status: 404, statusText: 'Not Found' });
+    });
+
+    it('should propagate 409 Conflict errors', (done) => {
+      client.create({ type: 'PF', document: '52998224725', displayName: 'Test' }).subscribe({
+        error: (err) => {
+          expect(err.status).toBe(409);
+          done();
+        },
+      });
+
+      const req = httpMock.expectOne(baseUrl);
+      req.flush({ detail: 'Duplicate document' }, { status: 409, statusText: 'Conflict' });
+    });
+
+    it('should propagate 500 Internal Server Error', (done) => {
+      client.findById('some-id').subscribe({
+        error: (err) => {
+          expect(err.status).toBe(500);
+          done();
+        },
+      });
+
+      const req = httpMock.expectOne(`${baseUrl}/some-id`);
+      req.flush({ detail: 'Internal error' }, { status: 500, statusText: 'Internal Server Error' });
+    });
+  });
+});
+
+describe('CustomerRegistryApiClient with custom apiBaseUrl', () => {
+  let client: CustomerRegistryApiClient;
+  let httpMock: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        CustomerRegistryApiClient,
+        {
+          provide: CUSTOMER_REGISTRY_UI_CONFIG,
+          useValue: { ...DEFAULT_CONFIG, apiBaseUrl: '/custom-api/v2' },
+        },
+      ],
+    });
+    client = TestBed.inject(CustomerRegistryApiClient);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => {
+    httpMock.verify();
+    TestBed.resetTestingModule();
+  });
+
+  it('should use custom apiBaseUrl for requests', () => {
+    const mockCustomer: Customer = {
+      id: 'test-id',
+      type: 'PF',
+      document: '52998224725',
+      displayName: 'Test',
+      status: 'ACTIVE',
+      addresses: [],
+      contacts: [],
+      schemaVersion: 1,
+      attributes: {},
+      createdAt: '2025-01-01T00:00:00Z',
+      updatedAt: '2025-01-01T00:00:00Z',
+    };
+
+    client.findById('test-id').subscribe();
+
+    const req = httpMock.expectOne('/custom-api/v2/customers/test-id');
+    expect(req.request.method).toBe('GET');
+    req.flush(mockCustomer);
+  });
 });

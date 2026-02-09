@@ -96,21 +96,32 @@ describe('CustomerDetailsComponent', () => {
     expect(compiled.textContent).toContain('+5511999998888');
   });
 
-  it('should emit edit event', () => {
+  it('should emit edit event when edit button is clicked', () => {
     const spy = jest.spyOn(component.edit, 'emit');
     component.customer = mockCustomer;
     fixture.detectChanges();
 
-    component.edit.emit(mockCustomer);
+    const buttons = fixture.nativeElement.querySelectorAll('button');
+    const editButton = Array.from(buttons).find(
+      (btn: any) => btn.textContent?.includes('edit')
+    ) as HTMLButtonElement;
+    editButton.click();
 
     expect(spy).toHaveBeenCalledWith(mockCustomer);
   });
 
-  it('should emit back event', () => {
+  it('should emit back event when back button is clicked', () => {
     const spy = jest.spyOn(component.back, 'emit');
     component.customer = mockCustomer;
+    fixture.detectChanges();
 
-    component.back.emit();
+    const buttons = fixture.nativeElement.querySelectorAll('button');
+    // The back button text is translated: "Voltar" (pt-BR) or "Back" (en)
+    const backButton = Array.from(buttons).find(
+      (btn: any) =>
+        btn.textContent?.includes('Voltar') || btn.textContent?.includes('Back')
+    ) as HTMLButtonElement;
+    backButton.click();
 
     expect(spy).toHaveBeenCalled();
   });

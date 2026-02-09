@@ -54,6 +54,11 @@ export interface CustomerRegistryProviderOptions {
 /**
  * Convenience function to configure the Customer Registry UI library.
  *
+ * **Important**: This function should only be called **once** at the application
+ * root level (e.g., in `app.config.ts` or the root `AppModule`). Calling it in
+ * lazy-loaded modules will override the `CUSTOMER_REGISTRY_UI_CONFIG` token,
+ * replacing the root-level configuration for that injector scope and its children.
+ *
  * Usage in app.config.ts:
  * ```typescript
  * export const appConfig: ApplicationConfig = {

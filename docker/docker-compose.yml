@@ -1,25 +1,27 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.4-alpine
+    env_file: .env
     environment:
-      POSTGRES_DB: customer_registry
-      POSTGRES_USER: cruser
-      POSTGRES_PASSWORD: crpassword
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cruser -d customer_registry"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 10
 
   pgadmin:
-    image: dpage/pgadmin4:latest
+    image: dpage/pgadmin4:8.4
+    env_file: .env
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@1ff.com
-      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
     ports:
       - "5050:80"
     depends_on:
@@ -32,17 +34,31 @@ services:
       dockerfile: Dockerfile.java
     volumes:
       - ../:/workspace
-      - maven-cache:/root/.m2
-      - /var/run/docker.sock:/var/run/docker.sock
+      - maven-cache:/home/builder/.m2
     working_dir: /workspace
     depends_on:
       postgres:
         condition: service_healthy
+    env_file: .env
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/customer_registry
-      SPRING_DATASOURCE_USERNAME: cruser
-      SPRING_DATASOURCE_PASSWORD: crpassword
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
       TESTCONTAINERS_RYUK_DISABLED: "true"
+
+  java-build-testcontainers:
+    extends:
+      service: java-build
+    volumes:
+      - ../:/workspace
+      - maven-cache:/home/builder/.m2
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      TESTCONTAINERS_RYUK_DISABLED: "true"
+      TESTCONTAINERS_HOST_OVERRIDE: host.docker.internal
 
   node-build:
     build:
@@ -50,7 +66,7 @@ services:
       dockerfile: Dockerfile.node
     volumes:
       - ../frontend:/workspace
-      - node-cache:/root/.npm
+      - node-cache:/home/builder/.npm
     working_dir: /workspace
 
 volumes:

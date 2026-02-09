@@ -150,6 +150,6 @@ public final class Customer {
     @Override
     public String toString() {
         return "Customer{id=%s, type=%s, document=%s, status=%s}".formatted(
-            id, type, document.number(), status);
+            id, type, document.masked(), status);
     }
 }

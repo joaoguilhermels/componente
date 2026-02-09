@@ -176,4 +176,46 @@ describe('CustomerStateService', () => {
       expect(apiMock.search).toHaveBeenCalled();
     });
   });
+
+  describe('unexpected error shapes', () => {
+    it('should handle error with empty error object', () => {
+      apiMock.search.mockReturnValue(
+        throwError(() => ({ error: {} }))
+      );
+      service.loadCustomers();
+
+      expect(service.error()).toBe('Unknown error');
+      expect(service.loading()).toBe(false);
+    });
+
+    it('should handle plain string error', () => {
+      apiMock.search.mockReturnValue(
+        throwError(() => 'Something went wrong')
+      );
+      service.loadCustomers();
+
+      expect(service.error()).toBe('Unknown error');
+      expect(service.loading()).toBe(false);
+    });
+
+    it('should handle null error', () => {
+      apiMock.search.mockReturnValue(
+        throwError(() => null)
+      );
+      service.loadCustomers();
+
+      expect(service.error()).toBe('Unknown error');
+      expect(service.loading()).toBe(false);
+    });
+
+    it('should handle error with message but no error.detail in loadCustomer', () => {
+      apiMock.findById.mockReturnValue(
+        throwError(() => ({ error: {} }))
+      );
+      service.loadCustomer('some-id');
+
+      expect(service.error()).toBe('Unknown error');
+      expect(service.loading()).toBe(false);
+    });
+  });
 });

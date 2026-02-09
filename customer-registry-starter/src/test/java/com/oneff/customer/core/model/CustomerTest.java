@@ -127,6 +127,61 @@ class CustomerTest {
         }
 
         @Test
+        void shouldTransitionFromActiveToClosed() {
+            Customer customer = Customer.createPF(VALID_CPF, "Test");
+            customer.transitionTo(CustomerStatus.ACTIVE);
+            customer.transitionTo(CustomerStatus.CLOSED);
+
+            assertThat(customer.getStatus()).isEqualTo(CustomerStatus.CLOSED);
+        }
+
+        @Test
+        void shouldTransitionFromSuspendedToClosed() {
+            Customer customer = Customer.createPF(VALID_CPF, "Test");
+            customer.transitionTo(CustomerStatus.ACTIVE);
+            customer.transitionTo(CustomerStatus.SUSPENDED);
+            customer.transitionTo(CustomerStatus.CLOSED);
+
+            assertThat(customer.getStatus()).isEqualTo(CustomerStatus.CLOSED);
+        }
+
+        @Test
+        void shouldRejectSelfTransitionDraftToDraft() {
+            Customer customer = Customer.createPF(VALID_CPF, "Test");
+
+            assertThatThrownBy(() -> customer.transitionTo(CustomerStatus.DRAFT))
+                .isInstanceOf(InvalidStatusTransitionException.class);
+        }
+
+        @Test
+        void shouldRejectSelfTransitionActiveToActive() {
+            Customer customer = Customer.createPF(VALID_CPF, "Test");
+            customer.transitionTo(CustomerStatus.ACTIVE);
+
+            assertThatThrownBy(() -> customer.transitionTo(CustomerStatus.ACTIVE))
+                .isInstanceOf(InvalidStatusTransitionException.class);
+        }
+
+        @Test
+        void shouldRejectSelfTransitionSuspendedToSuspended() {
+            Customer customer = Customer.createPF(VALID_CPF, "Test");
+            customer.transitionTo(CustomerStatus.ACTIVE);
+            customer.transitionTo(CustomerStatus.SUSPENDED);
+
+            assertThatThrownBy(() -> customer.transitionTo(CustomerStatus.SUSPENDED))
+                .isInstanceOf(InvalidStatusTransitionException.class);
+        }
+
+        @Test
+        void shouldRejectSelfTransitionClosedToClosed() {
+            Customer customer = Customer.createPF(VALID_CPF, "Test");
+            customer.transitionTo(CustomerStatus.CLOSED);
+
+            assertThatThrownBy(() -> customer.transitionTo(CustomerStatus.CLOSED))
+                .isInstanceOf(InvalidStatusTransitionException.class);
+        }
+
+        @Test
         void shouldUpdateTimestampOnTransition() {
             Customer customer = Customer.createPF(VALID_CPF, "Test");
             var originalUpdatedAt = customer.getUpdatedAt();
@@ -201,6 +256,44 @@ class CustomerTest {
 
             // Different IDs (both created with random UUIDs)
             assertThat(c1).isNotEqualTo(c2);
+        }
+
+        @Test
+        void shouldBeEqualToSelf() {
+            Customer customer = Customer.createPF(VALID_CPF, "Test");
+
+            assertThat(customer).isEqualTo(customer);
+        }
+
+        @Test
+        void shouldNotBeEqualToNull() {
+            Customer customer = Customer.createPF(VALID_CPF, "Test");
+
+            assertThat(customer).isNotEqualTo(null);
+        }
+
+        @Test
+        void shouldNotBeEqualToDifferentType() {
+            Customer customer = Customer.createPF(VALID_CPF, "Test");
+
+            assertThat(customer).isNotEqualTo("not a customer");
+        }
+
+        @Test
+        void shouldHaveConsistentHashCode() {
+            Customer customer = Customer.createPF(VALID_CPF, "Test");
+
+            int hash1 = customer.hashCode();
+            int hash2 = customer.hashCode();
+
+            assertThat(hash1).isEqualTo(hash2);
+        }
+
+        @Test
+        void shouldHaveSameHashCodeForEqualObjects() {
+            Customer customer = Customer.createPF(VALID_CPF, "Test");
+            // Self-equality means same hash code
+            assertThat(customer.hashCode()).isEqualTo(customer.hashCode());
         }
     }
 }

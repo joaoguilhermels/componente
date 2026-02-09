@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   EventEmitter,
+  inject,
   Input,
   Output,
 } from '@angular/core';
@@ -12,6 +13,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { TranslatePipe } from '../../i18n/translate.pipe';
+import { CUSTOMER_REGISTRY_UI_CONFIG } from '../../tokens';
 import { Customer } from '../../models/customer.model';
 
 @Component({
@@ -56,7 +58,7 @@ import { Customer } from '../../models/customer.model';
             </div>
           </div>
 
-          @if (customer.addresses.length > 0) {
+          @if (showAddresses && customer.addresses.length > 0) {
             <mat-divider></mat-divider>
             <h3 class="crui-section-title">{{ 'field.addresses' | translate }}</h3>
             @for (address of customer.addresses; track address.id) {
@@ -73,7 +75,7 @@ import { Customer } from '../../models/customer.model';
             }
           }
 
-          @if (customer.contacts.length > 0) {
+          @if (showContacts && customer.contacts.length > 0) {
             <mat-divider></mat-divider>
             <h3 class="crui-section-title">{{ 'field.contacts' | translate }}</h3>
             @for (contact of customer.contacts; track contact.id) {
@@ -146,8 +148,24 @@ import { Customer } from '../../models/customer.model';
   `],
 })
 export class CustomerDetailsComponent {
+  private readonly config = inject(CUSTOMER_REGISTRY_UI_CONFIG);
+
+  /** The customer to display. When null, the component renders nothing. */
   @Input() customer: Customer | null = null;
 
+  /** Emits the customer when the user clicks the edit button */
   @Output() readonly edit = new EventEmitter<Customer>();
+
+  /** Emits when the user clicks the back button */
   @Output() readonly back = new EventEmitter<void>();
+
+  /** Whether the addresses section is enabled by the feature flag */
+  get showAddresses(): boolean {
+    return this.config.features.addresses;
+  }
+
+  /** Whether the contacts section is enabled by the feature flag */
+  get showContacts(): boolean {
+    return this.config.features.contacts;
+  }
 }

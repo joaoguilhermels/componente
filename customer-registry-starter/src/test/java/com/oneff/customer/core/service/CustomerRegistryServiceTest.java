@@ -1,8 +1,10 @@
 package com.oneff.customer.core.service;
 
 import com.oneff.customer.core.event.CustomerCreated;
+import com.oneff.customer.core.event.CustomerDeleted;
 import com.oneff.customer.core.event.CustomerStatusChanged;
 import com.oneff.customer.core.event.CustomerUpdated;
+import com.oneff.customer.core.exception.CustomerNotFoundException;
 import com.oneff.customer.core.exception.CustomerValidationException;
 import com.oneff.customer.core.exception.DuplicateDocumentException;
 import com.oneff.customer.core.exception.InvalidStatusTransitionException;
@@ -68,7 +70,7 @@ class CustomerRegistryServiceTest {
             ArgumentCaptor<CustomerCreated> captor = ArgumentCaptor.forClass(CustomerCreated.class);
             verify(eventPublisher).publish(captor.capture());
             assertThat(captor.getValue().customerId()).isEqualTo(customer.getId());
-            assertThat(captor.getValue().document()).isEqualTo(VALID_CPF);
+            assertThat(captor.getValue().customerType()).isEqualTo(customer.getType());
         }
 
         @Test
@@ -78,7 +80,7 @@ class CustomerRegistryServiceTest {
 
             assertThatThrownBy(() -> service.register(customer))
                 .isInstanceOf(DuplicateDocumentException.class)
-                .hasMessageContaining(VALID_CPF);
+                .hasMessageContaining("already exists");
 
             verify(repository, never()).save(any());
             verify(eventPublisher, never()).publish(any(CustomerCreated.class));
@@ -214,7 +216,7 @@ class CustomerRegistryServiceTest {
 
             assertThatThrownBy(() ->
                 service.changeStatus(unknownId, CustomerStatus.ACTIVE))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(CustomerNotFoundException.class)
                 .hasMessageContaining("not found");
         }
     }
@@ -245,6 +247,31 @@ class CustomerRegistryServiceTest {
 
             assertThat(service.findById(customer.getId())).isPresent();
             assertThat(service.findAll()).hasSize(1);
+        }
+
+        @Test
+        void shouldDelegateFindByDocumentToRepository() {
+            var customer = Customer.createPF(VALID_CPF, "Test");
+            var document = customer.getDocument();
+            when(repository.findByDocument(document)).thenReturn(Optional.of(customer));
+
+            Optional<Customer> result = service.findByDocument(document);
+
+            assertThat(result).isPresent();
+            assertThat(result.get().getDocument().number()).isEqualTo(VALID_CPF);
+            verify(repository).findByDocument(document);
+        }
+
+        @Test
+        void shouldReturnEmptyWhenDocumentNotFound() {
+            var document = new com.oneff.customer.core.model.Document(
+                com.oneff.customer.core.model.CustomerType.PJ, VALID_CNPJ);
+            when(repository.findByDocument(document)).thenReturn(Optional.empty());
+
+            Optional<Customer> result = service.findByDocument(document);
+
+            assertThat(result).isEmpty();
+            verify(repository).findByDocument(document);
         }
     }
 }

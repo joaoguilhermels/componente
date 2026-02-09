@@ -14,6 +14,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormControl } from '@angular/forms';
+import { Subscription } from 'rxjs';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { TranslatePipe } from '../../i18n/translate.pipe';
@@ -59,10 +60,20 @@ import { CUSTOMER_UI_RENDERER_ERROR_REPORTER } from '../../tokens';
   `],
 })
 export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
+  /** The renderer registration to use for this field */
   @Input() registration!: FieldRendererRegistration;
+
+  /** i18n key for the field label */
   @Input() labelKey = '';
+
+  /** The form control to bind the field to */
   @Input() control!: FormControl;
+
+  /** Whether the field should be disabled */
   @Input() disabled = false;
+
+  /** Identifier for this field in the renderer context (used as context key) */
+  @Input() fieldKey = '';
 
   @ViewChild('rendererHost', { read: ViewContainerRef, static: false })
   rendererHost?: ViewContainerRef;
@@ -73,6 +84,7 @@ export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
   private readonly errorReporter = inject(CUSTOMER_UI_RENDERER_ERROR_REPORTER);
   private readonly errorHandler = inject(ErrorHandler);
   private readonly cdr = inject(ChangeDetectorRef);
+  private fallbackSubscription?: Subscription;
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['registration'] || changes['control']) {
@@ -88,6 +100,7 @@ export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.fallbackSubscription?.unsubscribe();
     this.rendererHost?.clear();
   }
 
@@ -110,7 +123,7 @@ export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
 
       // Inject context into the renderer
       const context: FieldRendererContext = {
-        key: this.control?.value ?? '',
+        key: this.fieldKey,
         value: this.control?.value,
         disabled: this.disabled,
         onChange: (value: unknown) => {
@@ -135,8 +148,11 @@ export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
     this.useFallback.set(true);
     this.fallbackControl.setValue(this.control?.value ?? '');
 
+    // Unsubscribe previous fallback sync before creating a new one
+    this.fallbackSubscription?.unsubscribe();
+
     // Sync fallback control with the form control
-    this.fallbackControl.valueChanges.subscribe((value) => {
+    this.fallbackSubscription = this.fallbackControl.valueChanges.subscribe((value) => {
       this.control?.setValue(value);
     });
 

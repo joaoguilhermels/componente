@@ -133,9 +133,16 @@ describe('CustomerFormComponent', () => {
       expect(spy).not.toHaveBeenCalled();
     });
 
-    it('should emit cancel', () => {
+    it('should emit cancel when cancel button is clicked', () => {
       const spy = jest.spyOn(component.cancel, 'emit');
-      component.cancel.emit();
+
+      const buttons = fixture.nativeElement.querySelectorAll('button');
+      const cancelButton = Array.from(buttons).find(
+        (btn: any) =>
+          btn.textContent?.includes('cancel') || btn.textContent?.includes('Cancel')
+      ) as HTMLButtonElement;
+      cancelButton.click();
+
       expect(spy).toHaveBeenCalled();
     });
   });

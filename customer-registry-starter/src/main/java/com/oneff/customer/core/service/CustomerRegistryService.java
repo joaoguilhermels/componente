@@ -1,18 +1,22 @@
 package com.oneff.customer.core.service;
 
 import com.oneff.customer.core.event.CustomerCreated;
+import com.oneff.customer.core.event.CustomerDeleted;
 import com.oneff.customer.core.event.CustomerStatusChanged;
 import com.oneff.customer.core.event.CustomerUpdated;
+import com.oneff.customer.core.exception.CustomerNotFoundException;
 import com.oneff.customer.core.exception.CustomerValidationException;
 import com.oneff.customer.core.exception.DuplicateDocumentException;
 import com.oneff.customer.core.model.Customer;
+import com.oneff.customer.core.model.CustomerPage;
 import com.oneff.customer.core.model.CustomerStatus;
 import com.oneff.customer.core.model.Document;
 import com.oneff.customer.core.port.CustomerEventPublisher;
 import com.oneff.customer.core.port.CustomerRepository;
 import com.oneff.customer.core.spi.CustomerEnricher;
 import com.oneff.customer.core.spi.CustomerValidator;
-import com.oneff.customer.core.spi.ValidationResult;
+
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -23,8 +27,9 @@ import java.util.UUID;
  *
  * <p>Pipeline: validate all → check duplicate → enrich all → persist → publish event.
  *
- * <p>This service has no Spring annotations by design — it's wired by
- * the auto-configuration layer, allowing it to be tested in isolation.</p>
+ * <p>This service has no Spring stereotype annotations by design — it's wired by
+ * the auto-configuration layer, allowing it to be tested in isolation.
+ * Transaction boundaries are applied via Spring AOP proxying.</p>
  */
 public class CustomerRegistryService {
 
@@ -52,19 +57,20 @@ public class CustomerRegistryService {
      * @throws CustomerValidationException if any validator rejects the customer
      * @throws DuplicateDocumentException if the document already exists
      */
+    @Transactional
     public Customer register(Customer customer) {
         runValidators(customer);
         checkDuplicate(customer.getDocument());
         customer = runEnrichers(customer);
         Customer saved = repository.save(customer);
-        eventPublisher.publish(CustomerCreated.of(
-            saved.getId(), saved.getType(), saved.getDocument().number()));
+        eventPublisher.publish(CustomerCreated.of(saved.getId(), saved.getType()));
         return saved;
     }
 
     /**
      * Updates an existing customer's data.
      */
+    @Transactional
     public Customer update(Customer customer) {
         runValidators(customer);
         Customer saved = repository.save(customer);
@@ -74,11 +80,13 @@ public class CustomerRegistryService {
 
     /**
      * Transitions a customer to a new lifecycle status.
+     *
+     * @throws CustomerNotFoundException if the customer does not exist
      */
+    @Transactional
     public Customer changeStatus(UUID customerId, CustomerStatus newStatus) {
         Customer customer = repository.findById(customerId)
-            .orElseThrow(() -> new IllegalArgumentException(
-                "Customer not found: " + customerId));
+            .orElseThrow(() -> new CustomerNotFoundException(customerId));
 
         CustomerStatus previousStatus = customer.getStatus();
         customer.transitionTo(newStatus);
@@ -89,16 +97,37 @@ public class CustomerRegistryService {
         return saved;
     }
 
+    /**
+     * Deletes a customer by ID.
+     *
+     * @throws CustomerNotFoundException if the customer does not exist
+     */
+    @Transactional
+    public void deleteCustomer(UUID customerId) {
+        repository.findById(customerId)
+            .orElseThrow(() -> new CustomerNotFoundException(customerId));
+        repository.deleteById(customerId);
+        eventPublisher.publish(CustomerDeleted.of(customerId));
+    }
+
+    @Transactional(readOnly = true)
     public Optional<Customer> findById(UUID id) {
         return repository.findById(id);
     }
 
+    @Transactional(readOnly = true)
     public Optional<Customer> findByDocument(Document document) {
         return repository.findByDocument(document);
     }
 
+    @Transactional(readOnly = true)
     public List<Customer> findAll() {
         return repository.findAll();
+    }
+
+    @Transactional(readOnly = true)
+    public CustomerPage findAllPaginated(int page, int size) {
+        return repository.findAll(page, size);
     }
 
     private void runValidators(Customer customer) {
@@ -115,7 +144,7 @@ public class CustomerRegistryService {
 
     private void checkDuplicate(Document document) {
         if (repository.existsByDocument(document)) {
-            throw new DuplicateDocumentException(document.number());
+            throw new DuplicateDocumentException();
         }
     }
 

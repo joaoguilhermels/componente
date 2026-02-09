@@ -244,14 +244,20 @@ class AttributeMigrationServiceIntegrationTest {
         insertCustomer(id, "52998224725",
             "{\"schemaVersion\":1,\"values\":{}}", 1);
 
-        // Slow migration that holds the lock for a noticeable duration
+        // Barrier ensures both threads start at the same time
+        CyclicBarrier startBarrier = new CyclicBarrier(2);
+        // Latch signals that the first thread has acquired the lock and is migrating
+        CountDownLatch lockAcquired = new CountDownLatch(1);
+
+        // Slow migration that signals when it has the lock, then waits
         AttributeSchemaMigration slowMigration = new AttributeSchemaMigration() {
             @Override public int sourceVersion() { return 1; }
             @Override public int targetVersion() { return 2; }
             @Override
             public String migrateJson(String json) {
+                lockAcquired.countDown(); // Signal that lock is held
                 try {
-                    Thread.sleep(500);
+                    Thread.sleep(500); // Hold the lock while second thread tries
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
@@ -266,15 +272,24 @@ class AttributeMigrationServiceIntegrationTest {
             var service2 = new AttributeMigrationService(
                 dataSource, List.of(v1ToV2()), false);
 
-            Future<Integer> future1 = executor.submit(service1::migrate);
-            Thread.sleep(100); // Let service1 acquire lock first
-            Future<Integer> future2 = executor.submit(service2::migrate);
+            Future<Integer> future1 = executor.submit(() -> {
+                startBarrier.await(5, TimeUnit.SECONDS);
+                return service1.migrate();
+            });
 
-            int result1 = future1.get(5, TimeUnit.SECONDS);
-            int result2 = future2.get(5, TimeUnit.SECONDS);
+            Future<Integer> future2 = executor.submit(() -> {
+                startBarrier.await(5, TimeUnit.SECONDS);
+                // Wait until service1 has acquired the lock before attempting
+                lockAcquired.await(5, TimeUnit.SECONDS);
+                return service2.migrate();
+            });
 
-            // One should succeed (1 row), the other should be skipped (-1)
-            assertThat(List.of(result1, result2)).containsExactlyInAnyOrder(1, -1);
+            int result1 = future1.get(10, TimeUnit.SECONDS);
+            int result2 = future2.get(10, TimeUnit.SECONDS);
+
+            // service1 should succeed (1 row migrated), service2 should be skipped (-1)
+            assertThat(result1).isEqualTo(1);
+            assertThat(result2).isEqualTo(-1);
         } finally {
             executor.shutdownNow();
         }

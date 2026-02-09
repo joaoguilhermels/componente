@@ -18,6 +18,12 @@ import java.sql.SQLException;
  *
  * <p>The lock is non-blocking: {@link #tryAcquire()} returns immediately with
  * {@code false} if another node already holds the lock.</p>
+ *
+ * <p><strong>Connection pool requirement:</strong> Because this class acquires a
+ * dedicated JDBC connection separate from the one used by the migration queries,
+ * the connection pool must be configured with a <em>minimum size of 2</em>.
+ * If the pool has only 1 connection, the migration transaction will deadlock
+ * waiting for a connection while this lock holds the only one.</p>
  */
 public class PostgresAdvisoryLock implements AutoCloseable {
 

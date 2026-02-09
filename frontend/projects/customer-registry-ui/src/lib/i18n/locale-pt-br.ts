@@ -1,3 +1,12 @@
+/**
+ * Brazilian Portuguese locale translations (default locale).
+ *
+ * Fallback behavior: if a key is not found in the active locale,
+ * the i18n service falls back through: host overrides -> built-in[locale]
+ * -> built-in['en'] -> built-in['pt-BR'] -> raw key.
+ * All locale files should contain the same set of keys to avoid
+ * unexpected fallback behavior.
+ */
 export const LOCALE_PT_BR: Record<string, string> = {
   // General
   'label.customer': 'Cliente',

@@ -26,7 +26,9 @@ class CustomerRegistryObservabilityAutoConfigurationTest {
     @DisplayName("should register metrics bean when Micrometer present and registry enabled")
     void registerMetricsWhenEnabled() {
         contextRunner
-            .withPropertyValues("customer.registry.enabled=true")
+            .withPropertyValues(
+                "customer.registry.enabled=true",
+                "customer.registry.features.observability=true")
             .withUserConfiguration(MicrometerConfig.class)
             .run(context ->
                 assertThat(context).hasSingleBean(CustomerRegistryMetrics.class));

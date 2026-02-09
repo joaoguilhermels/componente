@@ -1,6 +1,7 @@
 package com.oneff.customer.core.port;
 
 import com.oneff.customer.core.model.Customer;
+import com.oneff.customer.core.model.CustomerPage;
 import com.oneff.customer.core.model.Document;
 
 import java.util.List;
@@ -23,5 +24,13 @@ public interface CustomerRepository {
 
     boolean existsByDocument(Document document);
 
+    /**
+     * @deprecated Use {@link #findAll(int, int)} for paginated results.
+     */
+    @Deprecated
     List<Customer> findAll();
+
+    CustomerPage findAll(int page, int size);
+
+    void deleteById(UUID id);
 }

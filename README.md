@@ -98,7 +98,7 @@ export const appConfig: ApplicationConfig = {
       config: {
         apiBaseUrl: '/api/v1',
         locale: 'pt-BR',
-        features: { search: true, list: true, form: true },
+        features: { search: true, inlineEdit: false, addresses: true, contacts: true },
       },
     }),
   ],
@@ -133,10 +133,10 @@ All features are **off by default** (secure-by-default). Enable only what you ne
 
 | Config Key | Default | Description |
 |------------|---------|-------------|
-| `features.search` | `false` | Show search/filter component |
-| `features.list` | `false` | Show customer list with pagination |
-| `features.details` | `false` | Show customer detail view |
-| `features.form` | `false` | Show create/edit form |
+| `features.search` | `true` | Enable search/filter component |
+| `features.inlineEdit` | `false` | Enable inline editing in list |
+| `features.addresses` | `true` | Enable address management |
+| `features.contacts` | `true` | Enable contact management |
 
 ---
 
@@ -349,7 +349,7 @@ Domain events are published via Spring's `ApplicationEventPublisher`:
 | `CustomerUpdated` | `customerId`, `eventId` |
 | `CustomerStatusChanged` | `customerId`, `fromStatus`, `toStatus`, `eventId` |
 
-Each event carries a deterministic `eventId` (UUID v5) for idempotency.
+Each event carries a deterministic `eventId` (UUID v3 via `UUID.nameUUIDFromBytes`, which uses MD5) for idempotency.
 
 Listen in your host app:
 

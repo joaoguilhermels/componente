@@ -50,6 +50,17 @@ public record Document(CustomerType type, String number) {
                number.substring(12);
     }
 
+    /**
+     * Returns a masked version of the document for safe logging.
+     * CPF example: ***.***.*89-09 — CNPJ example: **.***.**&#47;*789-09
+     */
+    public String masked() {
+        if (type == CustomerType.PF) {
+            return "***.***.***." + number.substring(7, 9) + "-" + number.substring(9);
+        }
+        return "**.***.***/" + number.substring(8, 12) + "-" + number.substring(12);
+    }
+
     private static String stripFormatting(String raw) {
         return raw.replaceAll("[.\\-/]", "");
     }

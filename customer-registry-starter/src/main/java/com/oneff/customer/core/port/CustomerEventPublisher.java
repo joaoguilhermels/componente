@@ -1,6 +1,7 @@
 package com.oneff.customer.core.port;
 
 import com.oneff.customer.core.event.CustomerCreated;
+import com.oneff.customer.core.event.CustomerDeleted;
 import com.oneff.customer.core.event.CustomerStatusChanged;
 import com.oneff.customer.core.event.CustomerUpdated;
 
@@ -17,4 +18,6 @@ public interface CustomerEventPublisher {
     void publish(CustomerUpdated event);
 
     void publish(CustomerStatusChanged event);
+
+    void publish(CustomerDeleted event);
 }

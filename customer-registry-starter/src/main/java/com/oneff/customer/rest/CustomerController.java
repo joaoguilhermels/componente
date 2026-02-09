@@ -1,6 +1,7 @@
 package com.oneff.customer.rest;
 
 import com.oneff.customer.core.model.Customer;
+import com.oneff.customer.core.model.CustomerPage;
 import com.oneff.customer.core.model.CustomerStatus;
 import com.oneff.customer.core.model.CustomerType;
 import com.oneff.customer.core.model.Document;
@@ -72,10 +73,28 @@ class CustomerController {
     }
 
     @GetMapping
-    List<CustomerResponse> findAll() {
-        return service.findAll().stream()
-            .map(CustomerResponse::from)
+    ResponseEntity<CustomerPageResponse> findAll(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        CustomerPage customerPage = service.findAllPaginated(page, size);
+
+        List<CustomerResponse> responses = customerPage.customers().stream()
+            .map(CustomerResponse::fromMasked)
             .toList();
+
+        int totalPages = size > 0
+            ? (int) Math.ceil((double) customerPage.totalElements() / size)
+            : 0;
+
+        CustomerPageResponse response = new CustomerPageResponse(
+            responses,
+            customerPage.totalElements(),
+            customerPage.page(),
+            customerPage.size(),
+            totalPages
+        );
+
+        return ResponseEntity.ok(response);
     }
 
     @PatchMapping("/{id}")
@@ -85,17 +104,30 @@ class CustomerController {
 
         return service.findById(id)
             .map(customer -> {
+                Customer result = customer;
+
+                // Apply display name change first if provided
                 if (request.displayName() != null) {
-                    customer.updateDisplayName(request.displayName());
+                    result.updateDisplayName(request.displayName());
+                    result = service.update(result);
                 }
+
+                // Apply status change second if provided
                 if (request.status() != null) {
                     CustomerStatus newStatus = CustomerStatus.valueOf(request.status());
-                    return service.changeStatus(customer.getId(), newStatus);
+                    result = service.changeStatus(result.getId(), newStatus);
                 }
-                return service.update(customer);
+
+                return result;
             })
             .map(CustomerResponse::from)
             .map(ResponseEntity::ok)
             .orElse(ResponseEntity.notFound().build());
+    }
+
+    @DeleteMapping("/{id}")
+    ResponseEntity<Void> delete(@PathVariable UUID id) {
+        service.deleteCustomer(id);
+        return ResponseEntity.noContent().build();
     }
 }

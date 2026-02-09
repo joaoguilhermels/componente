@@ -3,6 +3,7 @@ package com.oneff.customer.persistence;
 import com.oneff.customer.core.model.CustomerStatus;
 import com.oneff.customer.core.model.CustomerType;
 import jakarta.persistence.*;
+import org.springframework.data.domain.Persistable;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -13,11 +14,14 @@ import java.util.UUID;
  * JPA entity mapping for the {@code cr_customer} table.
  *
  * <p>The {@code attributes} column is stored as PostgreSQL JSONB,
- * converted by {@link AttributesJsonConverter}.</p>
+ * converted by {@link AttributesJsonSerializer}.</p>
+ *
+ * <p>Implements {@link Persistable} to avoid an extra SELECT on insert
+ * when the ID is pre-assigned by the domain layer.</p>
  */
 @Entity
 @Table(name = "cr_customer")
-class CustomerEntity {
+class CustomerEntity implements Persistable<UUID> {
 
     @Id
     @Column(columnDefinition = "uuid")
@@ -45,9 +49,11 @@ class CustomerEntity {
     private int schemaVersion = 1;
 
     @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @org.hibernate.annotations.BatchSize(size = 25)
     private List<AddressEntity> addresses = new ArrayList<>();
 
     @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @org.hibernate.annotations.BatchSize(size = 25)
     private List<ContactEntity> contacts = new ArrayList<>();
 
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -56,11 +62,51 @@ class CustomerEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Version
+    private Long version;
+
+    @Transient
+    private boolean entityIsNew = false;
+
     protected CustomerEntity() {}
+
+    // ─── Persistable ─────────────────────────────────────────
+
+    @Override
+    public UUID getId() { return id; }
+
+    @Override
+    public boolean isNew() { return entityIsNew; }
+
+    void markAsNew() { this.entityIsNew = true; }
+
+    // ─── JPA Audit Callbacks ─────────────────────────────────
+
+    /**
+     * Defensive fallback: sets {@code createdAt} and {@code updatedAt}
+     * if not already set by the domain mapper.
+     */
+    @PrePersist
+    void onPrePersist() {
+        Instant now = Instant.now();
+        if (createdAt == null) {
+            createdAt = now;
+        }
+        if (updatedAt == null) {
+            updatedAt = now;
+        }
+    }
+
+    /**
+     * Defensive fallback: updates {@code updatedAt} on every JPA update.
+     */
+    @PreUpdate
+    void onPreUpdate() {
+        updatedAt = Instant.now();
+    }
 
     // ─── Getters and Setters ─────────────────────────────────
 
-    UUID getId() { return id; }
     void setId(UUID id) { this.id = id; }
 
     CustomerType getType() { return type; }
@@ -92,4 +138,6 @@ class CustomerEntity {
 
     Instant getUpdatedAt() { return updatedAt; }
     void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+
+    Long getVersion() { return version; }
 }

@@ -1,6 +1,7 @@
 package com.oneff.customer.events;
 
 import com.oneff.customer.core.event.CustomerCreated;
+import com.oneff.customer.core.event.CustomerDeleted;
 import com.oneff.customer.core.event.CustomerStatusChanged;
 import com.oneff.customer.core.event.CustomerUpdated;
 import com.oneff.customer.core.port.CustomerEventPublisher;
@@ -44,6 +45,13 @@ class SpringEventPublisherAdapter implements CustomerEventPublisher {
     public void publish(CustomerStatusChanged event) {
         log.info("Publishing CustomerStatusChanged event: customerId={}, {} -> {}, eventId={}",
             event.customerId(), event.fromStatus(), event.toStatus(), event.eventId());
+        applicationEventPublisher.publishEvent(event);
+    }
+
+    @Override
+    public void publish(CustomerDeleted event) {
+        log.info("Publishing CustomerDeleted event: customerId={}, eventId={}",
+            event.customerId(), event.eventId());
         applicationEventPublisher.publishEvent(event);
     }
 }

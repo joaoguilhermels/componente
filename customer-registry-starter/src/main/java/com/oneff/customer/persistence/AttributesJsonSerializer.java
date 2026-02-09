@@ -7,15 +7,13 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.oneff.customer.core.model.AttributeValue;
 import com.oneff.customer.core.model.Attributes;
-import jakarta.persistence.AttributeConverter;
-import jakarta.persistence.Converter;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * JPA converter that serializes/deserializes {@link Attributes} to/from
- * a JSON string for PostgreSQL JSONB storage.
+ * Serializer that converts {@link Attributes} to/from JSON strings
+ * for PostgreSQL JSONB storage.
  *
  * <p>The JSON structure includes the schema version and a map of typed values:
  * <pre>
@@ -28,24 +26,13 @@ import java.util.Map;
  * }
  * </pre>
  */
-@Converter
-class AttributesJsonConverter implements AttributeConverter<String, String> {
+final class AttributesJsonSerializer {
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
         .registerModule(new JavaTimeModule())
         .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
-    @Override
-    public String convertToDatabaseColumn(String attribute) {
-        // Already JSON string — pass through
-        return attribute;
-    }
-
-    @Override
-    public String convertToEntityAttribute(String dbData) {
-        // Already JSON string — pass through
-        return dbData;
-    }
+    private AttributesJsonSerializer() {}
 
     /**
      * Serializes an {@link Attributes} domain object to JSON string.

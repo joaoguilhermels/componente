@@ -35,47 +35,49 @@ import {
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="crui-search-container">
-      <mat-form-field appearance="outline" class="crui-search-field">
-        <mat-label>{{ 'field.type' | translate }}</mat-label>
-        <mat-select [(ngModel)]="searchType" name="type">
-          <mat-option [value]="undefined">{{ 'label.all' | translate }}</mat-option>
-          <mat-option value="PF">{{ 'customer.type.PF' | translate }}</mat-option>
-          <mat-option value="PJ">{{ 'customer.type.PJ' | translate }}</mat-option>
-        </mat-select>
-      </mat-form-field>
+    @if (isVisible) {
+      <div class="crui-search-container">
+        <mat-form-field appearance="outline" class="crui-search-field">
+          <mat-label>{{ 'field.type' | translate }}</mat-label>
+          <mat-select [(ngModel)]="searchType" name="type">
+            <mat-option [value]="undefined">{{ 'label.all' | translate }}</mat-option>
+            <mat-option value="PF">{{ 'customer.type.PF' | translate }}</mat-option>
+            <mat-option value="PJ">{{ 'customer.type.PJ' | translate }}</mat-option>
+          </mat-select>
+        </mat-form-field>
 
-      <mat-form-field appearance="outline" class="crui-search-field">
-        <mat-label>{{ 'field.status' | translate }}</mat-label>
-        <mat-select [(ngModel)]="searchStatus" name="status">
-          <mat-option [value]="undefined">{{ 'label.all' | translate }}</mat-option>
-          <mat-option value="DRAFT">{{ 'customer.status.DRAFT' | translate }}</mat-option>
-          <mat-option value="ACTIVE">{{ 'customer.status.ACTIVE' | translate }}</mat-option>
-          <mat-option value="SUSPENDED">{{ 'customer.status.SUSPENDED' | translate }}</mat-option>
-          <mat-option value="CLOSED">{{ 'customer.status.CLOSED' | translate }}</mat-option>
-        </mat-select>
-      </mat-form-field>
+        <mat-form-field appearance="outline" class="crui-search-field">
+          <mat-label>{{ 'field.status' | translate }}</mat-label>
+          <mat-select [(ngModel)]="searchStatus" name="status">
+            <mat-option [value]="undefined">{{ 'label.all' | translate }}</mat-option>
+            <mat-option value="DRAFT">{{ 'customer.status.DRAFT' | translate }}</mat-option>
+            <mat-option value="ACTIVE">{{ 'customer.status.ACTIVE' | translate }}</mat-option>
+            <mat-option value="SUSPENDED">{{ 'customer.status.SUSPENDED' | translate }}</mat-option>
+            <mat-option value="CLOSED">{{ 'customer.status.CLOSED' | translate }}</mat-option>
+          </mat-select>
+        </mat-form-field>
 
-      <mat-form-field appearance="outline" class="crui-search-field">
-        <mat-label>{{ 'field.document' | translate }}</mat-label>
-        <input matInput [(ngModel)]="searchDocument" name="document" />
-      </mat-form-field>
+        <mat-form-field appearance="outline" class="crui-search-field">
+          <mat-label>{{ 'field.document' | translate }}</mat-label>
+          <input matInput [(ngModel)]="searchDocument" name="document" />
+        </mat-form-field>
 
-      <mat-form-field appearance="outline" class="crui-search-field">
-        <mat-label>{{ 'field.displayName' | translate }}</mat-label>
-        <input matInput [(ngModel)]="searchDisplayName" name="displayName" />
-      </mat-form-field>
+        <mat-form-field appearance="outline" class="crui-search-field">
+          <mat-label>{{ 'field.displayName' | translate }}</mat-label>
+          <input matInput [(ngModel)]="searchDisplayName" name="displayName" />
+        </mat-form-field>
 
-      <div class="crui-search-actions">
-        <button mat-flat-button color="primary" (click)="onSearch()">
-          <mat-icon>search</mat-icon>
-          {{ 'label.search' | translate }}
-        </button>
-        <button mat-stroked-button (click)="onReset()">
-          {{ 'label.clear' | translate }}
-        </button>
+        <div class="crui-search-actions">
+          <button mat-flat-button color="primary" (click)="onSearch()">
+            <mat-icon>search</mat-icon>
+            {{ 'label.search' | translate }}
+          </button>
+          <button mat-stroked-button (click)="onReset()">
+            {{ 'label.clear' | translate }}
+          </button>
+        </div>
       </div>
-    </div>
+    }
   `,
   styles: [`
     .crui-search-container {
@@ -100,7 +102,10 @@ import {
 export class CustomerSearchComponent {
   private readonly config = inject(CUSTOMER_REGISTRY_UI_CONFIG);
 
+  /** Emits the search parameters when the user clicks the search button */
   @Output() readonly search = new EventEmitter<CustomerSearchParams>();
+
+  /** Emits when the user clicks the clear/reset button */
   @Output() readonly reset = new EventEmitter<void>();
 
   searchType?: CustomerType;

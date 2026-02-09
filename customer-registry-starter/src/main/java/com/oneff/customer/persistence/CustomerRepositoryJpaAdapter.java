@@ -1,8 +1,10 @@
 package com.oneff.customer.persistence;
 
 import com.oneff.customer.core.model.Customer;
+import com.oneff.customer.core.model.CustomerPage;
 import com.oneff.customer.core.model.Document;
 import com.oneff.customer.core.port.CustomerRepository;
+import org.springframework.data.domain.PageRequest;
 
 import java.util.List;
 import java.util.Optional;
@@ -24,7 +26,8 @@ class CustomerRepositoryJpaAdapter implements CustomerRepository {
 
     @Override
     public Customer save(Customer customer) {
-        CustomerEntity entity = CustomerEntityMapper.toEntity(customer);
+        boolean isNew = !jpaRepository.existsById(customer.getId());
+        CustomerEntity entity = CustomerEntityMapper.toEntity(customer, isNew);
         CustomerEntity saved = jpaRepository.save(entity);
         return CustomerEntityMapper.toDomain(saved);
     }
@@ -51,5 +54,20 @@ class CustomerRepositoryJpaAdapter implements CustomerRepository {
         return jpaRepository.findAll().stream()
             .map(CustomerEntityMapper::toDomain)
             .toList();
+    }
+
+    @Override
+    public void deleteById(UUID id) {
+        jpaRepository.deleteById(id);
+    }
+
+    @Override
+    public CustomerPage findAll(int page, int size) {
+        org.springframework.data.domain.Page<CustomerEntity> jpaPage =
+            jpaRepository.findAll(PageRequest.of(page, size));
+        List<Customer> customers = jpaPage.getContent().stream()
+            .map(CustomerEntityMapper::toDomain)
+            .toList();
+        return new CustomerPage(customers, jpaPage.getTotalElements(), page, size);
     }
 }

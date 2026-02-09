@@ -6,7 +6,7 @@ package com.oneff.customer.core.exception;
  */
 public class DuplicateDocumentException extends CustomerRegistryException {
 
-    public DuplicateDocumentException(String document) {
-        super("Customer with document '%s' already exists".formatted(document));
+    public DuplicateDocumentException() {
+        super("A customer with this document already exists");
     }
 }

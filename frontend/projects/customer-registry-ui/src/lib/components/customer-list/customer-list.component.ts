@@ -4,12 +4,11 @@ import {
   EventEmitter,
   Input,
   Output,
-  ViewChild,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatTableModule } from '@angular/material/table';
-import { MatPaginatorModule, MatPaginator, PageEvent } from '@angular/material/paginator';
-import { MatSortModule, MatSort, Sort } from '@angular/material/sort';
+import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
+import { MatSortModule, Sort } from '@angular/material/sort';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -122,19 +121,32 @@ import { Customer } from '../../models/customer.model';
   `],
 })
 export class CustomerListComponent {
+  /** Array of customers to display in the table. Default: empty array. */
   @Input() customers: Customer[] = [];
+
+  /** Total number of customers (used by the paginator). Default: 0. */
   @Input() totalCount = 0;
+
+  /** Number of customers per page. Default: 20. */
   @Input() pageSize = 20;
+
+  /** Current page index (0-based). Default: 0. */
   @Input() pageIndex = 0;
+
+  /** Whether a loading indicator should be shown. Default: false. */
   @Input() loading = false;
+
+  /** Column keys to display. Default: ['type', 'document', 'displayName', 'status', 'actions']. */
   @Input() displayedColumns: string[] = ['type', 'document', 'displayName', 'status', 'actions'];
 
+  /** Emits a PageEvent when the user navigates to a different page */
   @Output() readonly pageChange = new EventEmitter<PageEvent>();
-  @Output() readonly sortChange = new EventEmitter<Sort>();
-  @Output() readonly selectCustomer = new EventEmitter<Customer>();
 
-  @ViewChild(MatPaginator) paginator!: MatPaginator;
-  @ViewChild(MatSort) sort!: MatSort;
+  /** Emits a Sort event when the user changes the column sort */
+  @Output() readonly sortChange = new EventEmitter<Sort>();
+
+  /** Emits the selected customer when the user clicks a row */
+  @Output() readonly selectCustomer = new EventEmitter<Customer>();
 
   onPage(event: PageEvent): void {
     this.pageChange.emit(event);

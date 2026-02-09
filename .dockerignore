@@ -1,0 +1,13 @@
+.git
+node_modules
+**/target
+**/.gradle
+.azure
+.github
+*.md
+.idea
+.vscode
+.DS_Store
+coverage
+test-results
+.angular
