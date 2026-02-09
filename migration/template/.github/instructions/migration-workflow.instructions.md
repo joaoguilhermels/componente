@@ -56,16 +56,17 @@ Follow these phases strictly in order. Do not skip phases or combine steps.
 **Goal**: Extract pure domain model with zero infrastructure dependencies.
 
 **Rules**:
-- **FORBIDDEN in core/**: JPA annotations, Spring Data, Spring Web, JDBC, messaging imports
+- **FORBIDDEN in core/**: JPA annotations (`jakarta.persistence.*`), Spring Data (`org.springframework.data.*`), Spring Web (`org.springframework.web.*`), Spring stereotypes (`@Service`, `@Component`, `@Repository`), JDBC (`java.sql.*`), messaging
+- **ALLOWED in core/**: `org.springframework.transaction.annotation.Transactional` (cross-cutting concern), `org.springframework.modulith.*` (module metadata)
 - Aggregate roots: classes with named static factories (e.g., `Customer.createPF()`)
 - Value objects: Java records with compact constructor validation
 - Ports: interfaces in `core/port/` that adapters will implement
 - SPIs: extension points in `core/spi/` with default implementations
-- Events: immutable records with PII masking (never expose full CPF/CNPJ/documents)
+- Events: immutable records -- omit PII fields entirely (never expose CPF/CNPJ/documents, not even masked)
 - Services: no Spring stereotypes (`@Service`, `@Component`) -- wired by auto-config
 - Use `UUID` for entity IDs, generated via `UUID.randomUUID()` in static factories
 
-**Verification**: `grep -r "import javax\.\|import jakarta\.persistence\.\|import org\.springframework\.data\." target/src/main/java/**/core/` returns zero results.
+**Verification**: `grep -r "import jakarta\.\|import org\.springframework\.data\.\|import org\.springframework\.web\.\|import org\.springframework\.stereotype\." target/src/main/java/**/core/` returns zero results.
 
 ### Phase 3 -- Adapters
 
@@ -78,7 +79,9 @@ Follow these phases strictly in order. Do not skip phases or combine steps.
   - Exposes package-private adapter beans
   - Never use `@ComponentScan` (picks up test classes) -- use `@Import` instead
 - **Persistence adapter**:
-  - JPA entities are separate from domain model (use mapper methods)
+  - JPA entities are separate from domain model
+  - Create a separate package-private mapper utility class (e.g., `CustomerEntityMapper`)
+    with static `toEntity()` and `toDomain()` methods -- do NOT put mappers on the entity
   - Use `@JdbcTypeCode(SqlTypes.JSON)` for JSONB columns (not `@Convert`)
   - Implement `Persistable<UUID>` to avoid extra SELECT on insert
   - Use `@BatchSize(size=25)` on `@OneToMany` collections
@@ -101,18 +104,26 @@ Follow these phases strictly in order. Do not skip phases or combine steps.
   ```java
   /*
    * ORDERING: before/after which auto-configs
-   * GATE: @ConditionalOnProperty key
-   * BRIDGE: which bridge config is @Import-ed
-   * OVERRIDABLE: which beans have @ConditionalOnMissingBean
+   * GATE: @ConditionalOnProperty — which properties must be true
+   * BRIDGE: which bridge config is @Import-ed (if applicable)
+   * OVERRIDABLE: which beans have @ConditionalOnMissingBean (if applicable)
    */
   ```
-- ALL features gated by `@ConditionalOnProperty` with `havingValue = "true"`, `matchIfMissing = false`
-- ALL beans wrapped in `@ConditionalOnMissingBean` (consumers can override)
+- **Dual-gate pattern**: Adapter auto-configs require BOTH master switch AND feature flag:
+  `@ConditionalOnProperty(prefix = "<PREFIX>", name = {"enabled", "features.<feature>"}, havingValue = "true")`
+  Core auto-config uses only the master switch:
+  `@ConditionalOnProperty(name = "<PREFIX>.enabled", havingValue = "true")`
+- Use kebab-case feature names: `features.publish-events`, `features.persistence-jpa`, `features.rest-api`
+- `matchIfMissing` defaults to `false` when omitted (secure-by-default) -- either omit or set explicitly
+- `@ConditionalOnMissingBean` on all default/fallback beans and bridge config beans (consumers can override)
+  Exception: infrastructure beans like Liquibase do NOT need `@ConditionalOnMissingBean`
+- `@ConditionalOnMissingBean` goes on bridge config `@Bean` methods (where adapter beans are created),
+  not on the auto-config class itself (which only `@Import`s the bridge)
 - Register in `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`
 - Events auto-config MUST be ordered `before` core auto-config
-- Provide fallback beans: in-memory repository, no-op event publisher
+- Provide fallback beans in core auto-config: in-memory repository, no-op event publisher
 
-**Verification**: `grep -c '@ConditionalOnMissingBean'` matches `grep -c '@Bean'` in auto-config files.
+**Verification**: All adapter auto-configs use the dual-gate pattern. No `matchIfMissing = true` anywhere.
 
 ### Phase 5 -- Frontend (if applicable)
 
@@ -164,7 +175,9 @@ Follow these phases strictly in order. Do not skip phases or combine steps.
 | JPA annotations in core model | Violates hexagonal boundary | Separate JPA entity in persistence module |
 | Public controllers | Exposes internals | Package-private with bridge config |
 | `@Service` on domain service | Tight Spring coupling | Wire via auto-config `@Bean` method |
-| Feature flags `matchIfMissing = true` | Not secure-by-default | Always `matchIfMissing = false` |
+| Feature flags `matchIfMissing = true` | Not secure-by-default | Omit `matchIfMissing` (defaults to `false`) or set explicitly |
+| Single-gate on adapter auto-config | Bypasses master switch | Use dual-gate: `name = {"enabled", "features.<name>"}` |
+| Mapper methods on JPA entity | Couples entity to domain | Separate mapper utility class (e.g., `CustomerEntityMapper`) |
 | `@Convert` for JSONB | Hibernate 6 incompatible | `@JdbcTypeCode(SqlTypes.JSON)` |
 | Naming `@Input() formControl` | Collides with Angular directive | Use `control` instead |
 | `ENTRYPOINT` in Docker | Incompatible with Makefile CMD | Use `CMD` instead |

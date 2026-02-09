@@ -249,8 +249,13 @@ FORBIDDEN in this file:
 - import jakarta.persistence.*
 - import org.springframework.data.*
 - import org.springframework.web.*
+- import org.springframework.stereotype.* (@Service, @Component, @Repository)
 - import java.sql.*
 - Any annotation from the above packages
+
+ALLOWED Spring imports in core (these are acceptable exceptions):
+- org.springframework.transaction.annotation.Transactional (cross-cutting concern)
+- org.springframework.modulith.* (module metadata)
 ```
 
 **Expected Output**: A pure domain model class with static factories, validation, and no infrastructure imports.
@@ -442,21 +447,27 @@ Generate:
    - Implement Persistable<UUID> (avoids extra SELECT on insert)
    - Use @JdbcTypeCode(SqlTypes.JSON) for JSONB columns (NOT @Convert)
    - Use @BatchSize(size=25) on @OneToMany collections
-   - Include toModel() and static fromModel() mapper methods
+   - Do NOT put mapping methods on the entity itself
 
-2. Spring Data Repository: target/src/main/java/<PACKAGE_PATH>/persistence/<EntityClass>JpaRepository.java
+2. Entity Mapper: target/src/main/java/<PACKAGE_PATH>/persistence/<EntityClass>EntityMapper.java
+   - Package-private final class with private constructor (utility class)
+   - Static toEntity(<DomainClass> model, boolean isNew) method
+   - Static toDomain(<EntityClass>Entity entity) method
+   - Follow the reference pattern in CustomerEntityMapper.java
+
+3. Spring Data Repository: target/src/main/java/<PACKAGE_PATH>/persistence/<EntityClass>JpaRepository.java
    - Package-private interface
 
-3. Adapter: target/src/main/java/<PACKAGE_PATH>/persistence/<EntityClass>PersistenceAdapter.java
+4. Adapter: target/src/main/java/<PACKAGE_PATH>/persistence/<EntityClass>PersistenceAdapter.java
    - Package-private class implementing the core port
-   - Uses the JPA entity mapper methods
+   - Uses the entity mapper class (not methods on the entity)
 
-4. Bridge Config: target/src/main/java/<PACKAGE_PATH>/persistence/<ServiceName>PersistenceConfiguration.java
+5. Bridge Config: target/src/main/java/<PACKAGE_PATH>/persistence/<ServiceName>PersistenceConfiguration.java
    - PUBLIC @Configuration class
    - Exposes the package-private adapter as a bean
    - @EnableJpaRepositories with basePackageClasses
    - @EntityScan with basePackageClasses
-   - @ConditionalOnMissingBean on the bean method
+   - @ConditionalOnMissingBean on the @Bean method (this is where overridability lives)
 ```
 
 **Expected Output**: JPA entity, repository, adapter, and bridge configuration.
@@ -651,33 +662,50 @@ Bridge configs available:
 
 Generate auto-config classes in target/src/main/java/<PACKAGE_PATH>/autoconfigure/:
 
+IMPORTANT: The reference uses a dual-gate pattern. Adapter auto-configs require BOTH
+the master switch AND the individual feature flag to be true:
+@ConditionalOnProperty(prefix = "<PROPERTY_PREFIX>", name = {"enabled", "features.<feature>"}, havingValue = "true")
+The core auto-config uses only the master switch:
+@ConditionalOnProperty(name = "<PROPERTY_PREFIX>.enabled", havingValue = "true")
+Note: matchIfMissing defaults to false when omitted, which is the desired secure-by-default
+behavior. Either explicitly set it or omit it — both are acceptable.
+
+Use kebab-case feature names in properties (Spring Boot relaxed binding maps them to
+camelCase Java fields automatically):
+- features.publish-events (not features.events)
+- features.persistence-jpa (not features.persistence)
+- features.rest-api (not features.rest)
+
 1. <ServiceName>EventsAutoConfiguration.java
    - MUST be ordered BEFORE core auto-config
-   - Gate: <PROPERTY_PREFIX>.features.events=true (matchIfMissing=false)
+   - Dual gate: prefix="<PROPERTY_PREFIX>", name={"enabled", "features.publish-events"}
    - @Import(<ServiceName>EventsConfiguration.class)
+   - The bridge config's @Bean method has @ConditionalOnMissingBean (not here)
 
 2. <ServiceName>CoreAutoConfiguration.java
-   - Gate: <PROPERTY_PREFIX>.features.core=true (matchIfMissing=false)
+   - Gate: @ConditionalOnProperty(name = "<PROPERTY_PREFIX>.enabled", havingValue = "true")
    - Creates the domain service bean
-   - @ConditionalOnMissingBean on ALL beans
+   - @ConditionalOnMissingBean on ALL beans in this class (fallbacks + service)
    - Provides fallback beans (no-op event publisher, in-memory repository)
 
 3. <ServiceName>PersistenceAutoConfiguration.java
    - MUST be ordered AFTER core auto-config
-   - Gate: <PROPERTY_PREFIX>.features.persistence=true (matchIfMissing=false)
+   - Dual gate: prefix="<PROPERTY_PREFIX>", name={"enabled", "features.persistence-jpa"}
    - @Import(<ServiceName>PersistenceConfiguration.class)
+   - The bridge config's @Bean method has @ConditionalOnMissingBean (not here)
 
 4. <ServiceName>RestAutoConfiguration.java
    - MUST be ordered AFTER core auto-config
-   - Gate: <PROPERTY_PREFIX>.features.rest=true (matchIfMissing=false)
+   - Dual gate: prefix="<PROPERTY_PREFIX>", name={"enabled", "features.rest-api"}
    - @Import(<ServiceName>RestConfiguration.class)
+   - The bridge config's @Bean method has @ConditionalOnMissingBean (not here)
 
 EVERY auto-config class MUST have the structured header comment:
 /*
  * ORDERING: runs before/after <which auto-configs>
- * GATE: @ConditionalOnProperty("<PROPERTY_PREFIX>.features.<feature>")
- * BRIDGE: @Import(<BridgeConfig>.class)
- * OVERRIDABLE: <list of @ConditionalOnMissingBean beans>
+ * GATE: @ConditionalOnProperty — which properties must be true
+ * BRIDGE: @Import(<BridgeConfig>.class) — if applicable
+ * OVERRIDABLE: <list of @ConditionalOnMissingBean beans> — if applicable
  */
 
 5. META-INF registration file:
@@ -689,17 +717,29 @@ EVERY auto-config class MUST have the structured header comment:
 **Expected Output**: 4 auto-config classes + META-INF registration file.
 
 **Validation**:
+
+Check that `@ConditionalOnMissingBean` is used on all default/fallback beans:
+- Core auto-config: every `@Bean` that provides a default (fallback repo, no-op publisher,
+  service) MUST have `@ConditionalOnMissingBean` so consumers can override
+- Bridge configs: every `@Bean` that creates an adapter MUST have `@ConditionalOnMissingBean`
+  so host apps can substitute their own implementation
+- Exception: infrastructure beans like Liquibase `SpringLiquibase` do NOT need
+  `@ConditionalOnMissingBean` because they are not meant to be overridden
+
 ```bash
-# Bean count must match ConditionalOnMissingBean count
-BEANS=$(grep -c '@Bean' target/src/main/java/**/autoconfigure/*.java)
-CONDITIONAL=$(grep -c '@ConditionalOnMissingBean' target/src/main/java/**/autoconfigure/*.java)
-[ "$BEANS" -eq "$CONDITIONAL" ] && echo "PASS" || echo "FAIL: $BEANS beans but $CONDITIONAL @ConditionalOnMissingBean"
+# Verify no matchIfMissing = true anywhere
+grep -r "matchIfMissing.*true" target/src/main/java/**/autoconfigure/
+# Expected: zero results (secure-by-default means false, which is the default when omitted)
+
+# Verify dual-gate on adapter auto-configs
+grep -A3 '@ConditionalOnProperty' target/src/main/java/**/autoconfigure/*AutoConfiguration.java
+# Expected: adapter auto-configs show name = {"enabled", "features.<name>"}
 ```
 
 **Recovery**: If Copilot uses `matchIfMissing = true`:
 ```
 SECURITY VIOLATION: Feature flags must be OFF by default (secure-by-default).
-Change matchIfMissing = true to matchIfMissing = false.
+Remove matchIfMissing = true — the default (false) is the correct behavior.
 Features should only activate when explicitly enabled in configuration.
 ```
 
@@ -724,19 +764,24 @@ Requirements:
 - Use @ConfigurationProperties (not @Value)
 - Document each property with Javadoc
 
-Example structure:
+Example structure (use camelCase fields — Spring Boot relaxed binding maps
+kebab-case YAML keys like rest-api to restApi automatically):
+
 @ConfigurationProperties(prefix = "<PROPERTY_PREFIX>")
 public class <ServiceName>Properties {
+    private boolean enabled = false;  // master switch
     private Features features = new Features();
 
     public static class Features {
-        private boolean core = false;
-        private boolean persistence = false;
-        private boolean rest = false;
-        private boolean events = false;
-        // getters/setters
+        private boolean restApi = false;         // -> features.rest-api in YAML
+        private boolean persistenceJpa = false;  // -> features.persistence-jpa in YAML
+        private boolean publishEvents = false;   // -> features.publish-events in YAML
+        // getters/setters for each field
     }
 }
+
+Note: There is no "core" feature flag. Core auto-config is gated only by the
+master "enabled" switch. Individual feature flags control the adapters.
 ```
 
 **Expected Output**: Properties class with nested Features.
@@ -927,11 +972,13 @@ For each dimension, report:
 3. Fix needed (if FAIL)
 
 Check specifically:
-- [ ] Core has ZERO infrastructure imports
+- [ ] Core has ZERO infrastructure imports (except @Transactional and @Modulithic)
 - [ ] All modules have package-info.java with correct @ApplicationModule
 - [ ] Bridge configs are public, adapters are package-private
-- [ ] Every @Bean has matching @ConditionalOnMissingBean
-- [ ] Feature flags default to false (matchIfMissing = false)
+- [ ] @ConditionalOnMissingBean on all fallback beans (core) and bridge config beans
+- [ ] Adapter auto-configs use dual-gate: name = {"enabled", "features.<name>"}
+- [ ] Core auto-config gated only by master switch (<prefix>.enabled)
+- [ ] No matchIfMissing = true (false is the default when omitted)
 - [ ] Events auto-config runs before core auto-config
 - [ ] META-INF/spring/...AutoConfiguration.imports lists all auto-configs
 - [ ] ModulithStructureTest compiles and references correct marker class
@@ -939,6 +986,7 @@ Check specifically:
 - [ ] No @ComponentScan in auto-config (use @Import instead)
 - [ ] Controllers are package-private
 - [ ] JPA entities implement Persistable<UUID>
+- [ ] Separate entity mapper class (not methods on JPA entity)
 - [ ] @JdbcTypeCode(SqlTypes.JSON) used instead of @Convert for JSONB
 
 Format: markdown table with Dimension | Status | Evidence | Fix columns
@@ -963,8 +1011,8 @@ Format: markdown table with Dimension | Status | Evidence | Fix columns
 Run these verification commands on the generated code and report results:
 
 1. Core isolation check:
-   grep -r "import jakarta\.\|import org\.springframework\.data\.\|import org\.springframework\.web\." target/src/main/java/**/core/
-   Expected: zero results
+   grep -r "import jakarta\.\|import org\.springframework\.data\.\|import org\.springframework\.web\.\|import org\.springframework\.stereotype\." target/src/main/java/**/core/
+   Expected: zero results (note: @Transactional and @Modulithic imports are acceptable)
 
 2. Bridge config visibility:
    grep -l "public class.*Configuration" target/src/main/java/**/persistence/ target/src/main/java/**/rest/ target/src/main/java/**/events/
@@ -974,14 +1022,14 @@ Run these verification commands on the generated code and report results:
    grep "public class.*Controller" target/src/main/java/**/rest/
    Expected: zero results (controllers must be package-private)
 
-4. ConditionalOnMissingBean parity:
-   BEANS=$(grep -rc '@Bean' target/src/main/java/**/autoconfigure/ | awk -F: '{s+=$2}END{print s}')
-   CONDITIONAL=$(grep -rc '@ConditionalOnMissingBean' target/src/main/java/**/autoconfigure/ | awk -F: '{s+=$2}END{print s}')
-   Expected: BEANS equals CONDITIONAL
+4. Dual-gate on adapter auto-configs:
+   grep -A3 '@ConditionalOnProperty' target/src/main/java/**/autoconfigure/*AutoConfiguration.java
+   Expected: adapter auto-configs show name = {"enabled", "features.<name>"}
+   Core auto-config shows only name = "<prefix>.enabled"
 
 5. Feature flag defaults:
-   grep "matchIfMissing = true" target/src/main/java/**/autoconfigure/
-   Expected: zero results
+   grep "matchIfMissing.*true" target/src/main/java/**/autoconfigure/
+   Expected: zero results (false is the default when omitted)
 
 6. META-INF registration:
    cat target/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports

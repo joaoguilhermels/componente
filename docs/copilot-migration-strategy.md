@@ -249,8 +249,9 @@ Extract pure domain model with zero infrastructure dependencies.
    - Ports use only domain types -- no JPA, no Spring Data
 
 3. **Service Layer** (Prompt 2.3): Create the domain service
-   - Show Copilot the legacy service AND the reference `CustomerService.java`
+   - Show Copilot the legacy service AND the reference `CustomerRegistryService.java`
    - No `@Service` annotation -- wired by auto-config
+   - `@Transactional` is the only allowed Spring annotation in core services
 
 4. **Unit Tests** (Prompt 2.4): Write tests for model and service
    - Pure unit tests -- no Spring context needed
@@ -261,11 +262,11 @@ Run this check (manually or ask Copilot):
 
 ```bash
 # Must return zero results
-grep -r "import jakarta\.\|import org\.springframework\.data\.\|import org\.springframework\.web\." \
+grep -r "import jakarta\.\|import org\.springframework\.data\.\|import org\.springframework\.web\.\|import org\.springframework\.stereotype\." \
   target/src/main/java/**/core/
 ```
 
-- [ ] Zero infrastructure imports in `core/`
+- [ ] Zero infrastructure imports in `core/` (except `@Transactional` and `@Modulithic`)
 - [ ] All entities have named static factories
 - [ ] PII is masked in `toString()` methods
 - [ ] Port interfaces use only domain types
@@ -288,7 +289,8 @@ Create infrastructure adapters with bridge configuration pattern.
 ### Process
 
 1. **Persistence Adapter** (Prompt 3.1):
-   - JPA entity (separate from domain model) with mappers
+   - JPA entity (separate from domain model)
+   - Separate entity mapper utility class (static `toEntity()`/`toDomain()` methods)
    - Spring Data repository (package-private)
    - Adapter implementing the core port (package-private)
    - Bridge config (public `@Configuration`)
@@ -350,14 +352,19 @@ Wire all modules with conditional, overridable configuration.
 ### Verification
 
 ```bash
-# Bean count must match ConditionalOnMissingBean count
-BEANS=$(grep -rc '@Bean' target/src/main/java/**/autoconfigure/*.java | awk -F: '{s+=$2}END{print s}')
-CONDITIONAL=$(grep -rc '@ConditionalOnMissingBean' target/src/main/java/**/autoconfigure/*.java | awk -F: '{s+=$2}END{print s}')
-echo "Beans: $BEANS, ConditionalOnMissingBean: $CONDITIONAL"
+# Verify no matchIfMissing = true anywhere (secure-by-default)
+grep -r "matchIfMissing.*true" target/src/main/java/**/autoconfigure/
+# Expected: zero results
+
+# Verify dual-gate on adapter auto-configs
+grep -A3 '@ConditionalOnProperty' target/src/main/java/**/autoconfigure/*AutoConfiguration.java
+# Expected: adapter auto-configs show name = {"enabled", "features.<name>"}
 ```
 
-- [ ] `@Bean` count equals `@ConditionalOnMissingBean` count
-- [ ] All feature flags default to `false` (`matchIfMissing = false`)
+- [ ] Adapter auto-configs use dual-gate: `name = {"enabled", "features.<name>"}`
+- [ ] Core auto-config gated only by master switch `<prefix>.enabled`
+- [ ] No `matchIfMissing = true` (defaults to `false` when omitted, which is correct)
+- [ ] `@ConditionalOnMissingBean` on all fallback beans (core) and bridge config beans
 - [ ] Events auto-config ordered before core
 - [ ] META-INF registration file lists all auto-configs
 - [ ] Structured header comments on all auto-config classes
@@ -427,8 +434,10 @@ Comprehensive review of the migrated codebase against all architectural rules.
 | Core isolation | Zero infra imports in core/ | |
 | Module boundaries | All package-info.java correct | |
 | Bridge configs | Public configs, private adapters | |
-| Bean overridability | @Bean == @ConditionalOnMissingBean | |
-| Feature flags | All matchIfMissing = false | |
+| Bean overridability | @ConditionalOnMissingBean on fallback + bridge beans | |
+| Dual-gate pattern | Adapter auto-configs require enabled AND feature flag | |
+| Feature flags | No matchIfMissing = true (false is the default) | |
+| Entity mapper | Separate mapper class, not methods on JPA entity | |
 | Auto-config ordering | Events before core | |
 | META-INF | All auto-configs registered | |
 | Modulith test | Compiles and passes | |
@@ -528,7 +537,7 @@ The bridge configuration exposes them. Remove the 'public' modifier.
 **Fix**:
 ```
 SECURITY: All features must be OFF by default (secure-by-default).
-Change matchIfMissing = true to matchIfMissing = false.
+Remove matchIfMissing = true — the default (false) is the correct behavior.
 ```
 
 ### Copilot Uses @ComponentScan
