@@ -1,7 +1,12 @@
-FROM node:20-alpine
+# Pin to specific version for reproducible builds. Update periodically.
+FROM node:20-alpine@sha256:b31930e23df3bae0e48a485ef1f28e3362b2455b0181a5e5a1d24e1ec2c9ecec
 
 RUN apk add --no-cache bash git \
-    && npm install -g @angular/cli@17
+    && npm install -g @angular/cli@17.3.11
+
+RUN addgroup -S builder && adduser -S builder -G builder
+RUN mkdir -p /home/builder/.npm && chown -R builder:builder /home/builder
+USER builder
 
 WORKDIR /workspace
 

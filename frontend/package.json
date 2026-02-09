@@ -6,15 +6,19 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "jest --config projects/customer-registry-ui/jest.config.ts"
+    "test": "jest --config projects/customer-registry-ui/jest.config.ts",
+    "test:example": "jest --config projects/example-crm-app/jest.config.ts",
+    "test:all": "jest --projects projects/customer-registry-ui/jest.config.ts projects/example-crm-app/jest.config.ts"
   },
   "private": true,
   "dependencies": {
     "@angular/animations": "^17.3.0",
+    "@angular/cdk": "^17.3.10",
     "@angular/common": "^17.3.0",
     "@angular/compiler": "^17.3.0",
     "@angular/core": "^17.3.0",
     "@angular/forms": "^17.3.0",
+    "@angular/material": "^17.3.10",
     "@angular/platform-browser": "^17.3.0",
     "@angular/platform-browser-dynamic": "^17.3.0",
     "@angular/router": "^17.3.0",
@@ -32,6 +36,7 @@
     "jsdom": "^28.0.0",
     "ng-packagr": "^17.3.0",
     "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
     "typescript": "~5.4.2"
   }
 }

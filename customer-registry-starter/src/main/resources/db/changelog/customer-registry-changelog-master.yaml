@@ -1,0 +1,13 @@
+# Master Liquibase changelog for Customer Registry.
+#
+# Classpath resolution: This file is loaded via classpath (e.g. classpath:db/changelog/customer-registry-changelog-master.yaml).
+# Library consumers must ensure this path is on their classpath. The includeAll paths below
+# use relativeToChangelogFile: true so they resolve relative to this file's location,
+# making the changelog portable across different classpath configurations.
+databaseChangeLog:
+  - includeAll:
+      path: v1.0.0/
+      relativeToChangelogFile: true
+  - includeAll:
+      path: v1.0.1/
+      relativeToChangelogFile: true

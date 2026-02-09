@@ -1,0 +1,51 @@
+# Customer Registry - Cursor Rules
+
+## Docker-Only Builds
+- NEVER run Java, Maven, Node, or npm locally
+- All commands must run via `make` targets or `docker compose -f docker/docker-compose.yml run`
+- Use `make test` for tests, `make build` for builds, `make verify` for full verification
+
+## Architecture
+- Hexagonal architecture: `core/` has ZERO infrastructure dependencies
+- Adapters (`persistence/`, `rest/`, `events/`, `observability/`) depend inward on `core/` only
+- Never create cross-adapter dependencies
+- Spring Modulith enforces module boundaries (ArchUnit tests verify this)
+
+## Auto-Configuration Pattern
+- Every bean must use `@ConditionalOnMissingBean` (host app can override)
+- Every feature gated by `@ConditionalOnProperty(prefix = "customer.registry.features")`
+- All features OFF by default (secure-by-default)
+- Use bridge config pattern: public `@Configuration` exposes package-private beans
+- NEVER use `@ComponentScan` in auto-config (picks up test inner classes)
+- Events auto-config MUST run BEFORE core (`@AutoConfiguration(before = ...)`)
+
+## Naming Conventions
+- Java DB tables: `cr_` prefix (e.g., `cr_customer`)
+- Spring properties: `customer.registry.*`
+- Feature flags: `customer.registry.features.*`
+- Angular selectors: `crui-` prefix
+- Angular CSS variables: `--crui-*`
+
+## Java Patterns
+- Java 21, records for value objects, sealed interfaces for type hierarchies
+- `@JdbcTypeCode(SqlTypes.JSON)` for PostgreSQL JSONB (not `@Convert`)
+- Spring Boot 3.2+ requires `-parameters` compiler flag
+- `@WebMvcTest` in library needs `@SpringBootApplication` inner class in test
+
+## Angular Patterns
+- Angular 17 standalone components with `ChangeDetectionStrategy.OnPush`
+- Signal-based state management (no NgRx)
+- Feature flags: `search`, `inlineEdit`, `addresses`, `contacts`
+- i18n fallback: host overrides -> built-in[locale] -> built-in['en'] -> key
+- Never name an `@Input()` as `formControl` (collides with Angular directive)
+
+## Testing
+- TDD: write tests first (red-green-refactor)
+- Java: JUnit 5, Mockito, ArchUnit, Testcontainers
+- Angular: Jest with jest-preset-angular@14.6.2
+- Jest config key: `setupFilesAfterEnv` (not `setupFilesAfterSetup`)
+- `@DataJpaTest` auto-includes Liquibase -- disable with `spring.liquibase.enabled=false`
+
+## Commit Messages
+- Use Conventional Commits: `feat(scope): description`, `fix(scope): description`
+- Scopes: core, persistence, rest, events, observability, autoconfigure, ui

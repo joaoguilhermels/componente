@@ -1,0 +1,33 @@
+package <BASE_PACKAGE>;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.modulith.core.ApplicationModules;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * THE architectural gate test for <SERVICE_NAME>.
+ *
+ * This test verifies that Spring Modulith can parse the module structure
+ * and that all declared module dependencies are respected. It MUST pass
+ * before any PR merges.
+ *
+ * If this test fails, it means a module is accessing another module's
+ * internals in violation of the declared boundaries.
+ */
+class ModulithStructureTest {
+
+    @Test
+    void verifyModuleStructure() {
+        ApplicationModules modules = ApplicationModules.of(<MARKER_CLASS>.class);
+        modules.verify();
+    }
+
+    @Test
+    void shouldHaveAtLeastOneModule() {
+        ApplicationModules modules = ApplicationModules.of(<MARKER_CLASS>.class);
+
+        assertThat(modules).isNotEmpty();
+        modules.forEach(System.out::println);
+    }
+}

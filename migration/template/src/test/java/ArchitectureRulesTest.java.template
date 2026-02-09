@@ -1,0 +1,100 @@
+package <BASE_PACKAGE>;
+
+import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.importer.ClassFileImporter;
+import com.tngtech.archunit.core.importer.ImportOption;
+import com.tngtech.archunit.lang.ArchRule;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+
+/**
+ * Custom ArchUnit rules for <SERVICE_NAME> that go beyond what
+ * {@link ModulithStructureTest} verifies.
+ *
+ * These rules enforce hexagonal architecture invariants:
+ * - Core isolation from infrastructure
+ * - Auto-config must not use @ComponentScan
+ * - Events must be records
+ * - Controllers must be package-private
+ * - Bridge configurations must be public
+ */
+class ArchitectureRulesTest {
+
+    private static JavaClasses classes;
+
+    @BeforeAll
+    static void importClasses() {
+        classes = new ClassFileImporter()
+                .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+                .importPackages("<BASE_PACKAGE>");
+    }
+
+    @Test
+    void corePackageMustNotDependOnInfrastructure() {
+        ArchRule rule = noClasses()
+                .that().resideInAPackage("..core..")
+                .should().dependOnClassesThat()
+                .resideInAnyPackage(
+                        "jakarta.persistence..",
+                        "javax.persistence..",
+                        "org.springframework.data..",
+                        "org.springframework.web..",
+                        "org.springframework.jdbc..",
+                        "org.springframework.jms..",
+                        "org.springframework.kafka..",
+                        "org.springframework.amqp.."
+                )
+                .because("Core domain must have zero infrastructure dependencies");
+
+        rule.check(classes);
+    }
+
+    @Test
+    void autoConfigMustNotUseComponentScan() {
+        ArchRule rule = noClasses()
+                .that().resideInAPackage("..autoconfigure..")
+                .should().beAnnotatedWith("org.springframework.context.annotation.ComponentScan")
+                .because("Auto-config must use @Import, not @ComponentScan (picks up test classes)");
+
+        rule.check(classes);
+    }
+
+    @Test
+    void eventsMustBeRecords() {
+        ArchRule rule = classes()
+                .that().resideInAPackage("..core.event..")
+                .and().areNotInterfaces()
+                .should().beRecords()
+                .because("Domain events must be immutable records");
+
+        rule.check(classes);
+    }
+
+    @Test
+    void controllersMustBePackagePrivate() {
+        ArchRule rule = classes()
+                .that().resideInAPackage("..rest..")
+                .and().areAnnotatedWith("org.springframework.web.bind.annotation.RestController")
+                .should().bePackagePrivate()
+                .because("Controllers are package-private, exposed via bridge config");
+
+        rule.check(classes);
+    }
+
+    @Test
+    void bridgeConfigsMustBePublic() {
+        // Bridge configs follow the naming pattern <Module>Configuration
+        // (e.g., CustomerPersistenceConfiguration, CustomerRestConfiguration).
+        // They must be public so auto-config can @Import them.
+        ArchRule rule = classes()
+                .that().resideInAnyPackage("..persistence..", "..rest..", "..events..", "..observability..")
+                .and().areAnnotatedWith("org.springframework.context.annotation.Configuration")
+                .should().bePublic()
+                .because("Bridge configs must be public so auto-config can @Import them");
+
+        rule.check(classes);
+    }
+}
