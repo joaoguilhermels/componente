@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { CustomerStateService } from './customer-state.service';
 import { CustomerRegistryApiClient } from './customer-registry-api-client.service';
 import {
@@ -174,6 +174,62 @@ describe('CustomerStateService', () => {
 
       expect(service.currentPage()).toBe(2);
       expect(apiMock.search).toHaveBeenCalled();
+    });
+  });
+
+  describe('subscription management', () => {
+    it('should cancel previous search when loading new customers', () => {
+      const subject1 = new Subject<CustomerPageResponse>();
+      const subject2 = new Subject<CustomerPageResponse>();
+
+      apiMock.search
+        .mockReturnValueOnce(subject1.asObservable())
+        .mockReturnValueOnce(subject2.asObservable());
+
+      service.loadCustomers();
+      // First request is in flight
+      expect(service.loading()).toBe(true);
+
+      service.loadCustomers();
+      // Second request replaces first
+
+      // Complete second request
+      subject2.next(mockPageResponse);
+      subject2.complete();
+
+      expect(service.customers()).toEqual([mockCustomer]);
+      expect(service.loading()).toBe(false);
+
+      // First request completing late should have no effect (unsubscribed)
+      subject1.next({ ...mockPageResponse, content: [] });
+      subject1.complete();
+
+      // Customers should still be from second request
+      expect(service.customers()).toEqual([mockCustomer]);
+    });
+
+    it('should cancel previous detail load when loading new customer', () => {
+      const subject1 = new Subject<Customer>();
+      const subject2 = new Subject<Customer>();
+
+      apiMock.findById
+        .mockReturnValueOnce(subject1.asObservable())
+        .mockReturnValueOnce(subject2.asObservable());
+
+      service.loadCustomer('id-1');
+      service.loadCustomer('id-2');
+
+      // Complete second request
+      subject2.next(mockCustomer);
+      subject2.complete();
+
+      expect(service.selectedCustomer()).toEqual(mockCustomer);
+
+      // First request completing late should have no effect
+      subject1.next({ ...mockCustomer, displayName: 'Stale' });
+      subject1.complete();
+
+      expect(service.selectedCustomer()?.displayName).toBe('Maria Silva');
     });
   });
 

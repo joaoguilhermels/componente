@@ -1,0 +1,28 @@
+package <BASE_PACKAGE>;
+
+import org.springframework.modulith.Modulithic;
+
+/**
+ * Marker class for the <SERVICE_NAME_PASCAL> module root.
+ * Used by Spring Modulith to discover module boundaries.
+ *
+ * <p>Annotated with {@link Modulithic} rather than {@code @SpringBootApplication}
+ * because this is a reusable library, not a standalone application.</p>
+ *
+ * <p>Module layout:</p>
+ * <pre>
+ *   core/           - Domain model, ports, SPIs, events (Type.OPEN)
+ *   persistence/    - JPA adapter (depends on core)
+ *   rest/           - REST controller (depends on core)
+ *   events/         - Event publishing adapter (depends on core)
+ *   observability/  - Metrics adapter (depends on core)
+ *   autoconfigure/  - Wires modules together
+ * </pre>
+ */
+@Modulithic
+public final class <MARKER_CLASS> {
+
+    private <MARKER_CLASS>() {
+        // Marker class -- not instantiable
+    }
+}

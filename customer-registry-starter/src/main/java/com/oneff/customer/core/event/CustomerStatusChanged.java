@@ -21,6 +21,14 @@ public record CustomerStatusChanged(
     CustomerStatus toStatus,
     Instant occurredAt
 ) {
+    public CustomerStatusChanged {
+        java.util.Objects.requireNonNull(eventId, "eventId must not be null");
+        java.util.Objects.requireNonNull(customerId, "customerId must not be null");
+        java.util.Objects.requireNonNull(fromStatus, "fromStatus must not be null");
+        java.util.Objects.requireNonNull(toStatus, "toStatus must not be null");
+        java.util.Objects.requireNonNull(occurredAt, "occurredAt must not be null");
+    }
+
     public static CustomerStatusChanged of(UUID customerId, CustomerStatus from, CustomerStatus to) {
         return new CustomerStatusChanged(
             UUID.nameUUIDFromBytes(("status:" + customerId + ":" + from + ":" + to).getBytes()),

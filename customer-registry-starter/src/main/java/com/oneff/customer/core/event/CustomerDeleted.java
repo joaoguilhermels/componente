@@ -15,6 +15,12 @@ public record CustomerDeleted(
     UUID customerId,
     Instant occurredAt
 ) {
+    public CustomerDeleted {
+        java.util.Objects.requireNonNull(eventId, "eventId must not be null");
+        java.util.Objects.requireNonNull(customerId, "customerId must not be null");
+        java.util.Objects.requireNonNull(occurredAt, "occurredAt must not be null");
+    }
+
     public static CustomerDeleted of(UUID customerId) {
         return new CustomerDeleted(
             UUID.nameUUIDFromBytes(("deleted:" + customerId).getBytes()),

@@ -52,12 +52,14 @@ public record Document(CustomerType type, String number) {
 
     /**
      * Returns a masked version of the document for safe logging.
-     * CPF example: ***.***.*89-09 — CNPJ example: **.***.**&#47;*789-09
+     * CPF example: ***.***.X47-25 — CNPJ example: **.***.**&#47;*0001-81
      */
     public String masked() {
         if (type == CustomerType.PF) {
-            return "***.***.***." + number.substring(7, 9) + "-" + number.substring(9);
+            // Show last 4 digits: XXX.XXX.X##-##
+            return "***.***.*" + number.substring(7, 9) + "-" + number.substring(9);
         }
+        // Show last 6 digits: XX.XXX.XXX/####-##
         return "**.***.***/" + number.substring(8, 12) + "-" + number.substring(12);
     }
 

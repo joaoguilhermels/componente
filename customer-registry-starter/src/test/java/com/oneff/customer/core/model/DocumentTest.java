@@ -136,6 +136,35 @@ class DocumentTest {
     }
 
     @Nested
+    class Masking {
+
+        @Test
+        void shouldMaskCpfShowingLastFourDigits() {
+            var doc = new Document(CustomerType.PF, VALID_CPF);
+
+            // CPF 52998224725 → ***.***.*47-25
+            assertThat(doc.masked()).isEqualTo("***.***.*47-25");
+        }
+
+        @Test
+        void shouldMaskCnpjShowingLastSixDigits() {
+            var doc = new Document(CustomerType.PJ, VALID_CNPJ);
+
+            // CNPJ 11222333000181 → **.***.***/ 0001-81
+            assertThat(doc.masked()).isEqualTo("**.***.***/0001-81");
+        }
+
+        @Test
+        void shouldNotExposeFullDocumentNumber() {
+            var cpf = new Document(CustomerType.PF, VALID_CPF);
+            var cnpj = new Document(CustomerType.PJ, VALID_CNPJ);
+
+            assertThat(cpf.masked()).doesNotContain(VALID_CPF);
+            assertThat(cnpj.masked()).doesNotContain(VALID_CNPJ);
+        }
+    }
+
+    @Nested
     class NullSafety {
 
         @Test

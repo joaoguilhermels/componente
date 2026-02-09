@@ -11,6 +11,8 @@ import org.springframework.context.annotation.Configuration;
  * Bridge configuration exposing the package-private
  * {@link SpringEventPublisherAdapter} for auto-configuration import.
  */
+// BRIDGE CONFIG: Auto-config uses @Import(CustomerEventsConfiguration.class)
+// to register this bean. @ComponentScan is NOT used (picks up test classes). See ADR-002.
 @Configuration(proxyBeanMethods = false)
 public class CustomerEventsConfiguration {
 

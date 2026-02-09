@@ -237,6 +237,36 @@ class CustomerRegistryServiceTest {
     }
 
     @Nested
+    class Deletion {
+
+        @Test
+        void shouldDeleteCustomerAndPublishEvent() {
+            Customer customer = Customer.createPF(VALID_CPF, "Test");
+            when(repository.findById(customer.getId())).thenReturn(Optional.of(customer));
+
+            service.deleteCustomer(customer.getId());
+
+            verify(repository).deleteById(customer.getId());
+            ArgumentCaptor<CustomerDeleted> captor = ArgumentCaptor.forClass(CustomerDeleted.class);
+            verify(eventPublisher).publish(captor.capture());
+            assertThat(captor.getValue().customerId()).isEqualTo(customer.getId());
+        }
+
+        @Test
+        void shouldThrowWhenDeletingNonExistentCustomer() {
+            var unknownId = java.util.UUID.randomUUID();
+            when(repository.findById(unknownId)).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.deleteCustomer(unknownId))
+                .isInstanceOf(CustomerNotFoundException.class)
+                .hasMessageContaining("not found");
+
+            verify(repository, never()).deleteById(any());
+            verify(eventPublisher, never()).publish(any(CustomerDeleted.class));
+        }
+    }
+
+    @Nested
     class Queries {
 
         @Test
@@ -247,6 +277,19 @@ class CustomerRegistryServiceTest {
 
             assertThat(service.findById(customer.getId())).isPresent();
             assertThat(service.findAll()).hasSize(1);
+        }
+
+        @Test
+        void shouldDelegateFindAllPaginatedToRepository() {
+            var customer = Customer.createPF(VALID_CPF, "Test");
+            var page = new com.oneff.customer.core.model.CustomerPage(List.of(customer), 1L, 0, 10);
+            when(repository.findAll(0, 10)).thenReturn(page);
+
+            var result = service.findAllPaginated(0, 10);
+
+            assertThat(result.customers()).hasSize(1);
+            assertThat(result.totalElements()).isEqualTo(1L);
+            verify(repository).findAll(0, 10);
         }
 
         @Test

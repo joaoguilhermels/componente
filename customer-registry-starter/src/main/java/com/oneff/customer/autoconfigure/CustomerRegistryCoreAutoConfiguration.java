@@ -22,6 +22,13 @@ import java.util.List;
  * <p>Gated by {@code customer.registry.enabled=true}. Registers the domain service,
  * fallback repository (in-memory), and fallback event publisher (no-op).
  * All beans use {@code @ConditionalOnMissingBean} so consumers can override.</p>
+ *
+ * <p>ORDERING: Default (no explicit ordering). Other auto-configs (events) run before this.
+ * GATE: customer.registry.enabled=true (master switch).
+ * OVERRIDABLE: All beans use @ConditionalOnMissingBean — host app can replace repository,
+ *              event publisher, or the entire service.
+ * FALLBACKS: InMemoryCustomerRepository (no DB needed), NoOpEventPublisher (events disabled).
+ * See ADR-003 for rationale.</p>
  */
 @AutoConfiguration
 @ConditionalOnProperty(name = "customer.registry.enabled", havingValue = "true")

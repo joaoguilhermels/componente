@@ -30,6 +30,13 @@ public interface CustomerRepository {
     @Deprecated
     List<Customer> findAll();
 
+    /**
+     * Returns a page of customers.
+     *
+     * @param page zero-based page index, must be {@code >= 0}
+     * @param size maximum number of customers per page, must be {@code > 0}
+     * @return a page of customers, never null
+     */
     CustomerPage findAll(int page, int size);
 
     void deleteById(UUID id);

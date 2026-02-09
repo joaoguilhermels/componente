@@ -13,29 +13,38 @@ import org.slf4j.LoggerFactory;
  * No-op implementation of {@link CustomerEventPublisher}.
  *
  * <p>Used as a fallback when event publishing is disabled.
- * Logs events at DEBUG level for development visibility.</p>
+ * Logs discarded events at WARN level so operators are aware events are being lost.</p>
  */
+// Fallback publisher when publish-events feature is disabled.
+// Registered by CoreAutoConfiguration via @ConditionalOnMissingBean.
+// Replaced by SpringEventPublisherAdapter when customer.registry.features.publish-events=true.
 class NoOpEventPublisher implements CustomerEventPublisher {
 
     private static final Logger log = LoggerFactory.getLogger(NoOpEventPublisher.class);
 
+    NoOpEventPublisher() {
+        log.warn("Customer Registry event publishing is DISABLED. "
+            + "Events will NOT be published. To enable, add spring-events adapter to classpath "
+            + "and set customer.registry.features.events=true");
+    }
+
     @Override
     public void publish(CustomerCreated event) {
-        log.debug("Event publishing disabled — would publish: {}", event);
+        log.warn("Event publishing disabled — discarding CustomerCreated: customerId={}", event.customerId());
     }
 
     @Override
     public void publish(CustomerUpdated event) {
-        log.debug("Event publishing disabled — would publish: {}", event);
+        log.warn("Event publishing disabled — discarding CustomerUpdated: customerId={}", event.customerId());
     }
 
     @Override
     public void publish(CustomerStatusChanged event) {
-        log.debug("Event publishing disabled — would publish: {}", event);
+        log.warn("Event publishing disabled — discarding CustomerStatusChanged: customerId={}", event.customerId());
     }
 
     @Override
     public void publish(CustomerDeleted event) {
-        log.debug("Event publishing disabled — would publish: {}", event);
+        log.warn("Event publishing disabled — discarding CustomerDeleted: customerId={}", event.customerId());
     }
 }

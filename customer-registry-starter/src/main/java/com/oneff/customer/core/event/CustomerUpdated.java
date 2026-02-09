@@ -16,6 +16,12 @@ public record CustomerUpdated(
     UUID customerId,
     Instant occurredAt
 ) {
+    public CustomerUpdated {
+        java.util.Objects.requireNonNull(eventId, "eventId must not be null");
+        java.util.Objects.requireNonNull(customerId, "customerId must not be null");
+        java.util.Objects.requireNonNull(occurredAt, "occurredAt must not be null");
+    }
+
     public static CustomerUpdated of(UUID customerId) {
         return new CustomerUpdated(
             UUID.nameUUIDFromBytes(("updated:" + customerId).getBytes()),

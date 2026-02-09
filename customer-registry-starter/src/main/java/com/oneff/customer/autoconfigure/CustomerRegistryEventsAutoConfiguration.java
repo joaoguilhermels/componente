@@ -13,6 +13,13 @@ import org.springframework.context.annotation.Import;
  * {@code customer.registry.features.publish-events=true}.
  * Replaces the {@link NoOpEventPublisher} with the
  * Spring ApplicationEvent-based adapter.</p>
+ *
+ * <p>ORDERING: Runs BEFORE CustomerRegistryCoreAutoConfiguration so the Spring event adapter
+ *           registers before the NoOp fallback (which uses @ConditionalOnMissingBean).
+ * GATE: customer.registry.enabled=true AND customer.registry.features.publish-events=true.
+ * BRIDGE: Imports CustomerEventsConfiguration which exposes package-private SpringEventPublisherAdapter.
+ * OVERRIDABLE: Host apps can provide their own CustomerEventPublisher bean.
+ * See ADR-002 (bridge pattern) and ADR-003 (ordering rationale).</p>
  */
 @AutoConfiguration(before = CustomerRegistryCoreAutoConfiguration.class)
 @ConditionalOnProperty(

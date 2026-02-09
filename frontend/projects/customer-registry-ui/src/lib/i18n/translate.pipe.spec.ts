@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TranslatePipe } from './translate.pipe';
 import { CustomerI18nService } from './customer-i18n.service';
@@ -6,13 +6,22 @@ import { CustomerI18nService } from './customer-i18n.service';
 describe('TranslatePipe', () => {
   let pipe: TranslatePipe;
   let i18nService: jest.Mocked<CustomerI18nService>;
+  let localeSignal: WritableSignal<string>;
 
   beforeEach(() => {
+    localeSignal = signal('pt-BR');
     const mockService = {
-      currentLocale: signal('pt-BR'),
+      currentLocale: localeSignal.asReadonly(),
       translate: jest.fn((key: string, ...params: (string | number)[]) => {
-        if (key === 'label.customer') return 'Cliente';
-        if (key === 'validation.minLength') return `Mínimo de ${params[0]} caracteres.`;
+        const locale = localeSignal();
+        if (locale === 'pt-BR') {
+          if (key === 'label.customer') return 'Cliente';
+          if (key === 'validation.minLength') return `Mínimo de ${params[0]} caracteres.`;
+        }
+        if (locale === 'en-US') {
+          if (key === 'label.customer') return 'Customer';
+          if (key === 'validation.minLength') return `Minimum ${params[0]} characters.`;
+        }
         return key;
       }),
     };
@@ -42,5 +51,24 @@ describe('TranslatePipe', () => {
 
   it('should return key when no translation found', () => {
     expect(pipe.transform('unknown.key')).toBe('unknown.key');
+  });
+
+  it('should use cache when key and locale are unchanged', () => {
+    pipe.transform('label.customer');
+    pipe.transform('label.customer');
+
+    // translate should only be called once — second call uses cache
+    expect(i18nService.translate).toHaveBeenCalledTimes(1);
+  });
+
+  it('should re-translate when locale changes', () => {
+    const first = pipe.transform('label.customer');
+    expect(first).toBe('Cliente');
+
+    localeSignal.set('en-US');
+    const second = pipe.transform('label.customer');
+    expect(second).toBe('Customer');
+
+    expect(i18nService.translate).toHaveBeenCalledTimes(2);
   });
 });

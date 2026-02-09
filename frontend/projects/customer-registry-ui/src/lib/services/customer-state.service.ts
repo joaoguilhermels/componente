@@ -1,4 +1,5 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
+import { Subscription } from 'rxjs';
 import { Customer, CustomerSearchParams } from '../models/customer.model';
 import { CustomerRegistryApiClient } from './customer-registry-api-client.service';
 
@@ -12,6 +13,12 @@ import { CustomerRegistryApiClient } from './customer-registry-api-client.servic
 @Injectable({ providedIn: 'root' })
 export class CustomerStateService {
   private readonly api = inject(CustomerRegistryApiClient);
+
+  /** Subscription for the current search operation, cancelled on new request */
+  private searchSub?: Subscription;
+
+  /** Subscription for the current detail load operation, cancelled on new request */
+  private detailSub?: Subscription;
 
   /** All customers in the current page (internal writable signal) */
   private readonly _customers = signal<Customer[]>([]);
@@ -69,7 +76,8 @@ export class CustomerStateService {
       ...params,
     };
 
-    this.api.search(searchParams).subscribe({
+    this.searchSub?.unsubscribe();
+    this.searchSub = this.api.search(searchParams).subscribe({
       next: (response) => {
         this._customers.set(response.content);
         this._totalCount.set(response.totalElements);
@@ -88,7 +96,8 @@ export class CustomerStateService {
     this._loading.set(true);
     this._error.set(null);
 
-    this.api.findById(id).subscribe({
+    this.detailSub?.unsubscribe();
+    this.detailSub = this.api.findById(id).subscribe({
       next: (customer) => {
         this._selectedCustomer.set(customer);
         this._loading.set(false);
@@ -118,6 +127,7 @@ export class CustomerStateService {
 
   private extractErrorMessage(err: unknown): string {
     if (err == null || typeof err !== 'object') {
+      console.error('CustomerStateService: unexpected non-object error', err);
       return 'Unknown error';
     }
     const httpErr = err as Record<string, unknown>;
@@ -125,6 +135,7 @@ export class CustomerStateService {
     if (typeof detail === 'string') return detail;
     const message = httpErr['message'];
     if (typeof message === 'string') return message;
+    console.error('CustomerStateService: unrecognized error structure', err);
     return 'Unknown error';
   }
 }

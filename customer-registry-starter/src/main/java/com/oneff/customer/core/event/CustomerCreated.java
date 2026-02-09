@@ -19,6 +19,13 @@ public record CustomerCreated(
     CustomerType customerType,
     Instant occurredAt
 ) {
+    public CustomerCreated {
+        java.util.Objects.requireNonNull(eventId, "eventId must not be null");
+        java.util.Objects.requireNonNull(customerId, "customerId must not be null");
+        java.util.Objects.requireNonNull(customerType, "customerType must not be null");
+        java.util.Objects.requireNonNull(occurredAt, "occurredAt must not be null");
+    }
+
     public static CustomerCreated of(UUID customerId, CustomerType type) {
         return new CustomerCreated(
             UUID.nameUUIDFromBytes(("created:" + customerId).getBytes()),

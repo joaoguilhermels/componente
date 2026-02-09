@@ -16,4 +16,16 @@ public record CustomerPage(
     int page,
     int size
 ) {
+    public CustomerPage {
+        java.util.Objects.requireNonNull(customers, "customers must not be null");
+        if (totalElements < 0) {
+            throw new IllegalArgumentException("totalElements must be >= 0, got: " + totalElements);
+        }
+        if (page < 0) {
+            throw new IllegalArgumentException("page must be >= 0, got: " + page);
+        }
+        if (size <= 0) {
+            throw new IllegalArgumentException("size must be > 0, got: " + size);
+        }
+    }
 }

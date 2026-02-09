@@ -18,6 +18,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>Used as a fallback when JPA persistence is not enabled.
  * Useful for testing and prototyping.</p>
  */
+// Fallback repository when persistence-jpa feature is disabled.
+// Registered by CoreAutoConfiguration via @ConditionalOnMissingBean.
+// Replaced by CustomerRepositoryJpaAdapter when customer.registry.features.persistence-jpa=true.
 class InMemoryCustomerRepository implements CustomerRepository {
 
     private final Map<UUID, Customer> store = new ConcurrentHashMap<>();
@@ -53,6 +56,12 @@ class InMemoryCustomerRepository implements CustomerRepository {
 
     @Override
     public CustomerPage findAll(int page, int size) {
+        if (page < 0) {
+            throw new IllegalArgumentException("page must be >= 0, got: " + page);
+        }
+        if (size <= 0) {
+            throw new IllegalArgumentException("size must be > 0, got: " + size);
+        }
         List<Customer> all = new ArrayList<>(store.values());
         long totalElements = all.size();
         int fromIndex = Math.min(page * size, all.size());

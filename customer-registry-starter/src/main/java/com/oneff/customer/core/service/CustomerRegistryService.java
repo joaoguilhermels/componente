@@ -31,6 +31,8 @@ import java.util.UUID;
  * the auto-configuration layer, allowing it to be tested in isolation.
  * Transaction boundaries are applied via Spring AOP proxying.</p>
  */
+// Architecture note: No @Service annotation — wired by auto-config
+// (@ConditionalOnMissingBean) so host apps can provide an alternative implementation.
 public class CustomerRegistryService {
 
     private final List<CustomerValidator> validators;

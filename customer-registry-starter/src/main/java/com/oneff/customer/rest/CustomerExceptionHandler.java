@@ -120,6 +120,7 @@ class CustomerExceptionHandler {
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     ProblemDetail handleMessageNotReadable(HttpMessageNotReadableException ex) {
+        log.warn("Malformed request body rejected: {}", ex.getMessage());
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
             HttpStatus.BAD_REQUEST, "Malformed request body");
         problem.setTitle("Bad Request");
@@ -128,6 +129,8 @@ class CustomerExceptionHandler {
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     ProblemDetail handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        log.warn("Type mismatch for parameter '{}': expected {}, received '{}'",
+            ex.getName(), ex.getRequiredType(), ex.getValue());
         String detail = "Invalid value for parameter '" + ex.getName() + "'";
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
             HttpStatus.BAD_REQUEST, detail);
@@ -137,6 +140,7 @@ class CustomerExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
     ProblemDetail handleIllegalArgument(IllegalArgumentException ex) {
+        log.warn("Invalid argument rejected: {}", ex.getMessage());
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
             HttpStatus.BAD_REQUEST, ex.getMessage());
         problem.setTitle("Bad Request");

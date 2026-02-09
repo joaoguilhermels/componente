@@ -11,6 +11,8 @@
  * @see com.oneff.customer.core.model.Customer
  * @see com.oneff.customer.core.service.CustomerRegistryService
  */
+// OPEN so sub-packages (model, port, spi, service, event, exception) are visible to all modules.
+// Empty allowedDependencies = core depends on NOTHING (hexagonal inner ring). See ADR-001.
 @org.springframework.modulith.ApplicationModule(
     type = org.springframework.modulith.ApplicationModule.Type.OPEN,
     allowedDependencies = {}

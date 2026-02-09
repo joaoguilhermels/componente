@@ -16,6 +16,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
  * in the {@code persistence} package so it can reference package-private
  * types ({@link CustomerJpaRepository}, {@link CustomerRepositoryJpaAdapter}).</p>
  */
+// BRIDGE CONFIG: Auto-config uses @Import(CustomerPersistenceConfiguration.class)
+// to register this bean. @ComponentScan is NOT used (picks up test classes). See ADR-002.
 @Configuration(proxyBeanMethods = false)
 @EnableJpaRepositories(basePackageClasses = CustomerPersistenceConfiguration.class)
 @EntityScan(basePackageClasses = CustomerPersistenceConfiguration.class)
