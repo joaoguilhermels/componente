@@ -1,0 +1,162 @@
+# Migration Lessons Learned -- <SERVICE_NAME>
+
+## Migration Metadata
+
+- **Date**: <DATE>
+- **Legacy Service**: <SERVICE_NAME>
+- **Source Repository**: <LEGACY_REPO_URL>
+- **Target Repository**: <TARGET_REPO_URL>
+- **Tier**: <Simple|Standard|Advanced>
+- **Copilot Model**: <MODEL_VERSION>
+- **Total Phases Completed**: <0-5>
+- **Final Scorecard Score**: <PERCENTAGE>
+
+---
+
+## Phase-by-Phase Journal
+
+### Phase 0 -- Legacy Analysis
+
+| Aspect | Notes |
+|--------|-------|
+| **Accuracy of analysis** | Did Copilot correctly identify entities, dependencies, tier? |
+| **Missed elements** | What did Copilot miss in the legacy analysis? |
+| **Unexpected patterns** | Legacy patterns not covered by the instruction files |
+| **Entity count (expected vs found)** | |
+| **Dependency count (expected vs found)** | |
+
+**Observations:**
+
+<!-- Add free-form notes here -->
+
+---
+
+### Phase 1 -- Scaffold
+
+| Aspect | Notes |
+|--------|-------|
+| **Generated correctly on first try?** | Yes/No |
+| **Package structure correct?** | Yes/No |
+| **Marker class correct?** | Yes/No |
+| **ModulithStructureTest passes?** | Yes/No |
+| **Corrections needed** | List what had to be manually fixed |
+
+**Observations:**
+
+<!-- Add free-form notes here -->
+
+---
+
+### Phase 2 -- Core Extraction
+
+| Aspect | Notes |
+|--------|-------|
+| **JPA/Spring annotations removed?** | Yes/No |
+| **Port interfaces created?** | Yes/No -- list ports |
+| **SPI interfaces created?** | Yes/No -- list SPIs |
+| **Service layer clean?** | No Spring stereotypes? |
+| **Event records created?** | Yes/No -- PII masked? |
+| **Deviations from reference** | Where output differed from Customer.java pattern |
+| **Zero infra imports in core?** | Verified with grep? |
+
+**Observations:**
+
+<!-- Add free-form notes here -->
+
+---
+
+### Phase 3 -- Adapters
+
+| Aspect | Notes |
+|--------|-------|
+| **Bridge config pattern followed?** | Public @Configuration, package-private beans? |
+| **Persistence adapter** | Entity mapper correct? Persistable<UUID>? @BatchSize? |
+| **REST adapter** | Package-private controller? Error handling? |
+| **Events adapter** | Runs before core auto-config? PII masked? |
+| **Entity-to-model mappings correct?** | |
+| **Missing adapters** | Any adapters Copilot forgot to generate? |
+
+**Observations:**
+
+<!-- Add free-form notes here -->
+
+---
+
+### Phase 4 -- Auto-Configuration
+
+| Aspect | Notes |
+|--------|-------|
+| **Feature flags off-by-default?** | Yes/No |
+| **@ConditionalOnMissingBean on all beans?** | Yes/No |
+| **@ConditionalOnProperty gates correct?** | Yes/No |
+| **Structured header comments present?** | ORDERING, GATE, BRIDGE, OVERRIDABLE? |
+| **META-INF registration correct?** | AutoConfiguration.imports file? |
+| **Ordering (before/after) correct?** | Events before core? |
+| **Fallback beans present?** | In-memory repo, no-op publisher? |
+
+**Observations:**
+
+<!-- Add free-form notes here -->
+
+---
+
+### Phase 5 -- Frontend (if applicable)
+
+| Aspect | Notes |
+|--------|-------|
+| **Standalone components?** | Yes/No |
+| **OnPush change detection?** | Yes/No |
+| **Signal-based state?** | WritableSignal private, asReadonly() public? |
+| **i18n fallback chain?** | host -> built-in[locale] -> built-in['en'] -> key? |
+| **CSS custom properties prefixed?** | --<prefix>-*? |
+| **Selector prefix correct?** | <prefix>- on all selectors? |
+
+**Observations:**
+
+<!-- Add free-form notes here -->
+
+---
+
+## Summary
+
+### What Worked Well
+
+- <!-- Bullet points -->
+
+### What Needs Improvement
+
+- <!-- Bullet points -->
+
+### Suggested Prompt Changes
+
+| Phase | Current Prompt Issue | Suggested Fix |
+|-------|---------------------|---------------|
+| | | |
+
+### Suggested Instruction File Changes
+
+| File | Issue | Suggested Fix |
+|------|-------|---------------|
+| | | |
+
+### Patterns Not Covered
+
+Legacy patterns found that are not addressed by current instructions:
+
+- <!-- Bullet points describing each uncovered pattern -->
+
+---
+
+## Appendix: File Inventory
+
+### Files Generated
+
+| File | Phase | First-Try Correct? |
+|------|-------|--------------------|
+| | | |
+
+### Files Requiring Manual Fixes
+
+| File | Issue | Fix Applied |
+|------|-------|-------------|
+| | | |
