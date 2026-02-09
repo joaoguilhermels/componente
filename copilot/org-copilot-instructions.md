@@ -1,4 +1,4 @@
-# 1ff Organization Copilot Instructions
+# OneFinancial Organization Copilot Instructions
 
 ## Architecture
 

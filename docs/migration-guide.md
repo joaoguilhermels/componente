@@ -1,7 +1,7 @@
 # Migration Guide: Hexagonal Architecture with Spring Modulith
 
 A step-by-step guide for migrating existing Spring Boot microservices to hexagonal
-architecture enforced by Spring Modulith. Based on the 1ff Customer Registry reference
+architecture enforced by Spring Modulith. Based on the OneFinancial Customer Registry reference
 implementation.
 
 ---
@@ -38,7 +38,7 @@ or needs to be consumed as a library. At that point the lack of boundaries cause
 
 This guide walks through migrating a service to **hexagonal architecture** (ports and
 adapters) enforced by **Spring Modulith** module boundaries. The reference implementation
-is the 1ff Customer Registry, a Tier 3 library with full auto-configuration.
+is the OneFinancial Customer Registry, a Tier 3 library with full auto-configuration.
 
 ### Tiered Complexity Model
 
@@ -239,7 +239,7 @@ public final class YourServiceModule {
 From the reference project (`CustomerRegistryModule.java`):
 
 ```java
-package com.oneff.customer;
+package com.onefinancial.customer;
 
 import org.springframework.modulith.Modulithic;
 
@@ -1303,10 +1303,10 @@ Escalate to Tier 2 or 3 only when you have a concrete reason.
 
 ## Appendix A: Complete File Listing for Reference
 
-The reference project (1ff Customer Registry) has this structure:
+The reference project (OneFinancial Customer Registry) has this structure:
 
 ```
-customer-registry-starter/src/main/java/com/oneff/customer/
+customer-registry-starter/src/main/java/com/onefinancial/customer/
     CustomerRegistryModule.java                    # @Modulithic marker
 
     core/

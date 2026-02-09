@@ -1,9 +1,9 @@
 package com.example.crm;
 
-import com.oneff.customer.core.model.Customer;
-import com.oneff.customer.core.model.CustomerType;
-import com.oneff.customer.core.spi.CustomerValidator;
-import com.oneff.customer.core.spi.ValidationResult;
+import com.onefinancial.customer.core.model.Customer;
+import com.onefinancial.customer.core.model.CustomerType;
+import com.onefinancial.customer.core.spi.CustomerValidator;
+import com.onefinancial.customer.core.spi.ValidationResult;
 import org.springframework.stereotype.Component;
 
 /**

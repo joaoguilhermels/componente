@@ -1,14 +1,14 @@
 package com.example.crm;
 
-import com.oneff.customer.core.exception.CustomerValidationException;
-import com.oneff.customer.core.model.AttributeValue.StringValue;
-import com.oneff.customer.core.model.Customer;
-import com.oneff.customer.core.model.CustomerType;
-import com.oneff.customer.core.port.CustomerEventPublisher;
-import com.oneff.customer.core.port.CustomerRepository;
-import com.oneff.customer.core.service.CustomerRegistryService;
-import com.oneff.customer.core.spi.CustomerEnricher;
-import com.oneff.customer.core.spi.CustomerValidator;
+import com.onefinancial.customer.core.exception.CustomerValidationException;
+import com.onefinancial.customer.core.model.AttributeValue.StringValue;
+import com.onefinancial.customer.core.model.Customer;
+import com.onefinancial.customer.core.model.CustomerType;
+import com.onefinancial.customer.core.port.CustomerEventPublisher;
+import com.onefinancial.customer.core.port.CustomerRepository;
+import com.onefinancial.customer.core.service.CustomerRegistryService;
+import com.onefinancial.customer.core.spi.CustomerEnricher;
+import com.onefinancial.customer.core.spi.CustomerValidator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;

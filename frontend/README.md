@@ -1,4 +1,4 @@
-# 1ff Customer Registry - Angular Frontend
+# OneFinancial Customer Registry - Angular Frontend
 
 Angular 17 workspace containing the `customer-registry-ui` library -- a reusable, configurable UI component library for customer registration and management.
 

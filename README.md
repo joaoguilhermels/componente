@@ -3,8 +3,8 @@
 A reusable **Spring Boot Starter** (backend) + **Angular Library** (frontend) for managing Brazilian customer records (PF/PJ with CPF/CNPJ validation). Install it, configure feature flags, and extend via SPIs — zero fork required.
 
 ```
-com.oneff:customer-registry-starter   (Maven)
-@1ff/customer-registry-ui             (npm)
+com.onefinancial:customer-registry-starter   (Maven)
+@onefinancial/customer-registry-ui           (npm)
 ```
 
 ---
@@ -60,7 +60,7 @@ Add the starter dependency:
 
 ```xml
 <dependency>
-    <groupId>com.oneff</groupId>
+    <groupId>com.onefinancial</groupId>
     <artifactId>customer-registry-starter</artifactId>
     <version>0.1.0</version>
 </dependency>
@@ -82,13 +82,13 @@ customer:
 Install the library:
 
 ```bash
-npm install @1ff/customer-registry-ui
+npm install @onefinancial/customer-registry-ui
 ```
 
 Configure in `app.config.ts`:
 
 ```typescript
-import { provideCustomerRegistry } from '@1ff/customer-registry-ui';
+import { provideCustomerRegistry } from '@onefinancial/customer-registry-ui';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -672,11 +672,11 @@ make security-scan
 ### Project Structure
 
 ```
-1ff/
+onefinancial/
 ├── pom.xml                              # Maven reactor POM
 ├── customer-registry-bom/               # BOM (dependency versions)
 ├── customer-registry-starter/           # Spring Boot Starter
-│   └── src/main/java/com/oneff/customer/
+│   └── src/main/java/com/onefinancial/customer/
 │       ├── core/                        # Domain (model, port, spi, service)
 │       ├── persistence/                 # JPA adapter
 │       ├── rest/                        # REST controller

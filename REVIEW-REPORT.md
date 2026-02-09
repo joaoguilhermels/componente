@@ -1,4 +1,4 @@
-# 1ff Customer Registry — Consolidated Specialist Review Report
+# OneFinancial Customer Registry — Consolidated Specialist Review Report
 
 **Date:** 2026-02-08
 **Branch:** `feature/phase-9-cicd-docs`
@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-The 1ff Customer Registry library is **well-architected** with clean hexagonal architecture, proper Spring Modulith boundaries, and good extensibility via SPI. However, the review uncovered **several issues that should be addressed before production use or merge to main**.
+The OneFinancial Customer Registry library is **well-architected** with clean hexagonal architecture, proper Spring Modulith boundaries, and good extensibility via SPI. However, the review uncovered **several issues that should be addressed before production use or merge to main**.
 
 **Total findings: 73**
 

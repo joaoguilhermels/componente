@@ -14,7 +14,7 @@ Thank you for considering contributing to the Customer Registry project.
 
 ```bash
 # Clone the repository
-git clone <repo-url> && cd 1ff
+git clone <repo-url> && cd onefinancial
 
 # Build everything
 make build
@@ -130,7 +130,7 @@ test(rest): add missing PATCH endpoint tests
 
 ## Adding a New Module
 
-1. Create the module directory under `customer-registry-starter/src/main/java/com/oneff/customer/<module>/`
+1. Create the module directory under `customer-registry-starter/src/main/java/com/onefinancial/customer/<module>/`
 2. Add a `package-info.java` with the appropriate Spring Modulith `@ApplicationModule` annotation
 3. Only depend on `core` (never on other adapter modules)
 4. Create a bridge configuration class if beans need to be exposed to auto-config
