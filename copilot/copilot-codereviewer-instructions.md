@@ -19,7 +19,7 @@ Banned import prefixes in `core/`:
 
 ```java
 // REJECT: core must have zero infrastructure dependencies
-package com.oneff.customer.core.service;
+package com.onefinancial.customer.core.service;
 import jakarta.persistence.EntityManager; // blocked
 ```
 
@@ -29,8 +29,8 @@ Adapter modules must depend inward on `core/` only. An adapter must never import
 
 ```java
 // REJECT: persistence adapter importing from rest adapter
-package com.oneff.customer.persistence;
-import com.oneff.customer.rest.CustomerController; // blocked
+package com.onefinancial.customer.persistence;
+import com.onefinancial.customer.rest.CustomerController; // blocked
 ```
 
 Pairs to check:
@@ -46,7 +46,7 @@ Auto-configuration classes must use `@Import` to declare their beans. `@Componen
 ```java
 // REJECT
 @AutoConfiguration
-@ComponentScan("com.oneff.customer.persistence") // blocked
+@ComponentScan("com.onefinancial.customer.persistence") // blocked
 public class PersistenceAutoConfiguration { }
 
 // CORRECT

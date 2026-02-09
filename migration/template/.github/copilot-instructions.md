@@ -2,7 +2,7 @@
 
 ## Architecture
 
-This service follows the 1ff hexagonal architecture pattern using Spring Modulith.
+This service follows the OneFinancial hexagonal architecture pattern using Spring Modulith.
 All modules are organized under the `<BASE_PACKAGE>` package.
 
 ### Module Boundaries

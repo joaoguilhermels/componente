@@ -1,4 +1,4 @@
-# 1ff Customer Registry - Project Overview
+# OneFinancial Customer Registry - Project Overview
 
 ## Purpose
 Spring Boot starter library + Angular UI library for customer registration with Brazilian document validation (CPF/CNPJ), extensible pipelines (validators, enrichers), and pluggable persistence.

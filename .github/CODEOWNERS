@@ -1,3 +1,3 @@
-* @oneff/customer-registry-team
-customer-registry-starter/src/main/java/com/oneff/customer/core/ @oneff/domain-team
-frontend/ @oneff/frontend-team
+* @onefinancial/customer-registry-team
+customer-registry-starter/src/main/java/com/onefinancial/customer/core/ @onefinancial/domain-team
+frontend/ @onefinancial/frontend-team

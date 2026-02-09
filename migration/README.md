@@ -1,7 +1,7 @@
 # Migration Templates
 
 This directory contains templates and guidelines for migrating existing services
-to the 1ff hexagonal architecture pattern (Spring Modulith + Angular library).
+to the OneFinancial hexagonal architecture pattern (Spring Modulith + Angular library).
 
 ## Directory Structure
 
@@ -35,9 +35,9 @@ migration/
 
 ```bash
 # From the service repo root
-cp -r /path/to/1ff/migration/template/.github .
-cp /path/to/1ff/migration/template/Makefile.template Makefile
-cp /path/to/1ff/migration/template/docker/docker-compose.yml.template docker/docker-compose.yml
+cp -r /path/to/onefinancial/migration/template/.github .
+cp /path/to/onefinancial/migration/template/Makefile.template Makefile
+cp /path/to/onefinancial/migration/template/docker/docker-compose.yml.template docker/docker-compose.yml
 ```
 
 ### 2. Replace placeholders
@@ -48,7 +48,7 @@ Every template uses `<PLACEHOLDER>` format. Search and replace:
 |-------------|---------|-------------|
 | `<SERVICE_NAME>` | `billing-service` | Lowercase kebab-case service name |
 | `<SERVICE_NAME_PASCAL>` | `BillingService` | PascalCase service name |
-| `<BASE_PACKAGE>` | `com.oneff.billing` | Root Java package |
+| `<BASE_PACKAGE>` | `com.onefinancial.billing` | Root Java package |
 | `<MARKER_CLASS>` | `BillingServiceModule` | Spring Modulith marker class name |
 | `<DB_PREFIX>` | `bs_` | Database table prefix (2-3 chars + underscore) |
 | `<PROPERTY_PREFIX>` | `billing.service` | Spring property namespace |
@@ -60,17 +60,17 @@ Every template uses `<PLACEHOLDER>` format. Search and replace:
 
 ```bash
 # Adjust package path to match <BASE_PACKAGE>
-mkdir -p src/main/java/com/oneff/billing
-mkdir -p src/test/java/com/oneff/billing
+mkdir -p src/main/java/com/onefinancial/billing
+mkdir -p src/test/java/com/onefinancial/billing
 
 cp migration/template/src/main/java/MarkerClass.java.template \
-   src/main/java/com/oneff/billing/BillingServiceModule.java
+   src/main/java/com/onefinancial/billing/BillingServiceModule.java
 
 cp migration/template/src/test/java/ModulithStructureTest.java.template \
-   src/test/java/com/oneff/billing/ModulithStructureTest.java
+   src/test/java/com/onefinancial/billing/ModulithStructureTest.java
 
 cp migration/template/src/test/java/ArchitectureRulesTest.java.template \
-   src/test/java/com/oneff/billing/ArchitectureRulesTest.java
+   src/test/java/com/onefinancial/billing/ArchitectureRulesTest.java
 ```
 
 ### 4. Follow the phased migration workflow

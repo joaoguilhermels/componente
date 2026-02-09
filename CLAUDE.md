@@ -1,4 +1,4 @@
-# 1ff Customer Registry
+# OneFinancial Customer Registry
 
 ## Build Commands (Docker Only -- NEVER run Java/Node locally)
 

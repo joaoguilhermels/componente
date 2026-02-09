@@ -1,8 +1,8 @@
 package com.example.crm;
 
-import com.oneff.customer.core.model.AttributeValue.StringValue;
-import com.oneff.customer.core.model.Customer;
-import com.oneff.customer.core.spi.CustomerEnricher;
+import com.onefinancial.customer.core.model.AttributeValue.StringValue;
+import com.onefinancial.customer.core.model.Customer;
+import com.onefinancial.customer.core.spi.CustomerEnricher;
 import org.springframework.stereotype.Component;
 
 /**

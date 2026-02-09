@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.oneff</groupId>
+        <groupId>com.onefinancial</groupId>
         <artifactId>customer-registry-parent</artifactId>
         <version>${revision}</version>
         <relativePath>../pom.xml</relativePath>
@@ -19,7 +19,7 @@
     <dependencies>
         <!-- The Customer Registry Starter -->
         <dependency>
-            <groupId>com.oneff</groupId>
+            <groupId>com.onefinancial</groupId>
             <artifactId>customer-registry-starter</artifactId>
             <version>${revision}</version>
         </dependency>

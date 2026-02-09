@@ -1,8 +1,8 @@
 package com.example.crm;
 
-import com.oneff.customer.core.event.CustomerCreated;
-import com.oneff.customer.core.event.CustomerStatusChanged;
-import com.oneff.customer.core.event.CustomerUpdated;
+import com.onefinancial.customer.core.event.CustomerCreated;
+import com.onefinancial.customer.core.event.CustomerStatusChanged;
+import com.onefinancial.customer.core.event.CustomerUpdated;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
