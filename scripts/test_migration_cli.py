@@ -477,6 +477,18 @@ class TestCheckerFailures:
         result = checker.check_ci_pipeline()
         assert not result.passed
 
+    def test_yaml_extension_ci_pipeline_detected(self, tmp_path):
+        """H4: CI pipeline files with .yaml extension should be detected."""
+        workflows = tmp_path / ".github" / "workflows"
+        workflows.mkdir(parents=True)
+        (workflows / "build.yaml").write_text("name: Build")
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_ci_pipeline()
+        assert result.passed
+        assert "build.yaml" in result.detail
+
     def test_match_if_missing_true_fails(self, tmp_repo):
         tmp_path, java_root, _, _ = tmp_repo
         bad_config = java_root / "autoconfigure" / "BadAutoConfig.java"
@@ -579,6 +591,22 @@ class TestCommentDetection:
         comment_lines = cli.ScorecardChecker._compute_comment_lines(lines)
         assert 0 in comment_lines
         assert 1 not in comment_lines
+
+    def test_inline_block_comment_preserves_code(self):
+        """C1: @Bean /* comment */ should NOT be marked as a comment line."""
+        lines = ["@Bean /* overridable */", "public Foo foo() {}"]
+        comment_lines = cli.ScorecardChecker._compute_comment_lines(lines)
+        assert 0 not in comment_lines, "@Bean with inline comment should not be a comment line"
+        assert 1 not in comment_lines
+
+    def test_inline_block_comment_starts_multiline(self):
+        """Mid-line /* without */ starts a block — next lines are comments."""
+        lines = ["@Bean /* start", " * continued", " */", "public Foo foo() {}"]
+        comment_lines = cli.ScorecardChecker._compute_comment_lines(lines)
+        assert 0 not in comment_lines, "Line with code before /* should not be comment"
+        assert 1 in comment_lines
+        assert 2 in comment_lines
+        assert 3 not in comment_lines
 
 
 # ─── COMB Per-Method Pairing Tests ──────────────────────────────────────────
@@ -696,7 +724,7 @@ class TestCombPerMethodPairing:
         result = checker.check_conditional_on_missing_bean()
         assert result.passed, f"7-line Javadoc between COMB and Bean should not break pairing: {result.detail}"
 
-    def test_comb_boundary_5_non_comment_lines_fails(self, tmp_repo):
+    def test_comb_boundary_6_non_comment_lines_fails(self, tmp_repo):
         """C1 boundary: 6 non-comment, non-blank lines between COMB and Bean should FAIL."""
         tmp_path, java_root, _, _ = tmp_repo
         config = java_root / "autoconfigure" / "CoreAutoConfiguration.java"
@@ -719,6 +747,27 @@ class TestCombPerMethodPairing:
         result = checker.check_conditional_on_missing_bean()
         # 6 non-comment lines between COMB and Bean → effective distance = 7 > 5 → FAIL
         assert not result.passed, f"6 non-comment lines between COMB and Bean should fail: {result.detail}"
+
+    def test_comb_mixed_comments_blanks_code_passes(self, tmp_repo):
+        """H3: Mix of blank lines, Javadoc, and annotations between COMB and Bean."""
+        tmp_path, java_root, _, _ = tmp_repo
+        config = java_root / "autoconfigure" / "CoreAutoConfiguration.java"
+        config.write_text(textwrap.dedent("""\
+            public class CoreAutoConfiguration {
+                @ConditionalOnMissingBean
+
+                /** Creates the bean. */
+                @Deprecated
+                @Bean
+                public Foo foo() { return new Foo(); }
+            }
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_conditional_on_missing_bean()
+        # 1 blank + 3 Javadoc lines + 1 code line → effective distance = 2 (only @Deprecated counts)
+        assert result.passed, f"Mixed comments/blanks/code should pass: {result.detail}"
 
     def test_comb_boundary_4_non_comment_lines_passes(self, tmp_repo):
         """C1 boundary: 4 non-comment, non-blank lines between COMB and Bean should PASS."""
@@ -1186,6 +1235,31 @@ class TestCmdRecord:
 
 # ─── Semantic Check Tests (C1) ───────────────────────────────────────────────
 
+class TestPackageDirCache:
+    """M4: Verify _find_package_dir cache avoids repeated rglob calls."""
+
+    def test_cache_returns_same_result_on_second_call(self, tmp_repo):
+        tmp_path, java_root, _, _ = tmp_repo
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        first = checker._find_package_dir("core")
+        second = checker._find_package_dir("core")
+        assert first is second  # exact same object from cache
+        assert "core" in checker._pkg_cache
+
+    def test_cache_stores_none_for_missing_package(self, tmp_path):
+        java_root = tmp_path / "src" / "main" / "java"
+        java_root.mkdir(parents=True)
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker._find_package_dir("nonexistent")
+        assert result is None
+        assert "nonexistent" in checker._pkg_cache
+        # Second call should return cached None without rglob
+        result2 = checker._find_package_dir("nonexistent")
+        assert result2 is None
+
+
 class TestSemanticPortChecks:
     """C1: Port interface check verifies 'interface' keyword."""
 
@@ -1205,6 +1279,26 @@ class TestSemanticPortChecks:
         result = checker.check_port_interfaces()
         assert not result.passed
         assert "No port interfaces found" in result.detail
+
+    def test_interface_keyword_in_block_comment_not_matched(self, tmp_repo):
+        """H1: 'interface' in a block comment body should not produce a false positive."""
+        tmp_path, java_root, _, _ = tmp_repo
+        port_dir = java_root / "core" / "port"
+        port_dir.mkdir(parents=True, exist_ok=True)
+        bad_port = port_dir / "NotAPort.java"
+        bad_port.write_text(textwrap.dedent("""\
+            package com.example.svc.core.port;
+            /*
+            The interface contract for persistence
+            is described in this block comment.
+            */
+            public class NotAPort {}
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_port_interfaces()
+        assert not result.passed, f"'interface' in block comment should not match: {result.detail}"
 
     def test_interface_in_port_dir_passes(self, tmp_repo):
         """A proper Java interface in port/ should pass."""
@@ -1273,6 +1367,36 @@ class TestPortCrossReference:
         assert result.passed  # still passes — WARNING, not FAIL
         assert "WARNING" in result.detail
         assert "OrphanPort" in result.detail
+
+    def test_mixed_port_implementation_warns_orphan_only(self, tmp_repo):
+        """M1: Two ports — one implemented, one orphan. Only the orphan is warned."""
+        tmp_path, java_root, _, _ = tmp_repo
+        port_dir = java_root / "core" / "port"
+        port_dir.mkdir(parents=True, exist_ok=True)
+        port_dir.joinpath("FooRepository.java").write_text(textwrap.dedent("""\
+            package com.example.svc.core.port;
+            public interface FooRepository { void save(); }
+        """))
+        port_dir.joinpath("BarPublisher.java").write_text(textwrap.dedent("""\
+            package com.example.svc.core.port;
+            public interface BarPublisher { void publish(); }
+        """))
+        # Only FooRepository has an adapter
+        adapter = java_root / "persistence" / "FooPersistenceAdapter.java"
+        adapter.write_text(textwrap.dedent("""\
+            package com.example.svc.persistence;
+            class FooPersistenceAdapter implements FooRepository {
+                public void save() {}
+            }
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_port_interfaces()
+        assert result.passed  # still passes — WARNING, not FAIL
+        assert "WARNING" in result.detail
+        assert "BarPublisher" in result.detail
+        assert "FooRepository" not in result.detail.split("WARNING")[1]  # only orphan warned
 
     def test_reference_repo_ports_all_implemented(self, reference_checker):
         """Reference repo should have all ports implemented (no warnings)."""
@@ -1352,6 +1476,21 @@ class TestPerAdapterIntegrationTests:
         assert not result.passed
         assert "rest" in result.detail
         assert "events" in result.detail  # events also present but no test
+
+    def test_single_adapter_with_test_passes(self, tmp_path):
+        """M2: Repo with only persistence/ (no rest, no events) and a test → PASS."""
+        java_root = tmp_path / "src" / "main" / "java" / "com" / "example" / "svc"
+        test_root = tmp_path / "src" / "test" / "java" / "com" / "example" / "svc"
+        (java_root / "persistence").mkdir(parents=True)
+        p_test = test_root / "persistence"
+        p_test.mkdir(parents=True)
+        (p_test / "PersistenceAdapterTest.java").write_text("// test")
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_adapter_integration_tests()
+        assert result.passed
+        assert "1 adapter(s)" in result.detail
 
     def test_no_adapters_fails(self, tmp_path):
         """No adapter modules at all → FAIL."""

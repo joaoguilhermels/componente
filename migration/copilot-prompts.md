@@ -1230,40 +1230,50 @@ Format: markdown table with Dimension | Status | Evidence | Fix columns
 
 ---
 
-### Prompt V.2: Architecture Verification Commands
+### Prompt V.2: Architecture Verification Review
 
 **Context**: Generated project in `target/`.
 
 **Prompt**:
 ```
-Run these verification commands on the generated code and report results:
+Review the generated code in @workspace to verify architecture compliance. For each check,
+open the relevant files and report PASS or FAIL with evidence.
 
-1. Core isolation check:
-   grep -r "import jakarta\.\|import org\.springframework\.data\.\|import org\.springframework\.web\.\|import org\.springframework\.stereotype\." target/src/main/java/**/core/
-   Expected: zero results (note: @Transactional and @Modulithic imports are acceptable)
+1. **Core isolation** — Open every `.java` file under target/src/main/java/**/core/.
+   Scan all `import` statements. Report any imports from these FORBIDDEN packages:
+   - `jakarta.persistence`
+   - `org.springframework.data`
+   - `org.springframework.web`
+   - `org.springframework.stereotype`
+   ALLOWED exceptions: `org.springframework.transaction.annotation.Transactional` and `org.springframework.modulith.*`.
+   Expected: zero forbidden imports.
 
-2. Bridge config visibility:
-   grep -l "public class.*Configuration" target/src/main/java/**/persistence/ target/src/main/java/**/rest/ target/src/main/java/**/events/
-   Expected: one file per adapter module
+2. **Bridge config visibility** — Open each `*Configuration.java` file in:
+   - target/src/main/java/<PACKAGE_PATH>/persistence/
+   - target/src/main/java/<PACKAGE_PATH>/rest/
+   - target/src/main/java/<PACKAGE_PATH>/events/
+   Verify each has `public class` declaration.
+   Expected: one public configuration class per adapter module.
 
-3. Controller visibility:
-   grep "public class.*Controller" target/src/main/java/**/rest/
-   Expected: zero results (controllers must be package-private)
+3. **Controller visibility** — Open each `*Controller.java` in target/src/main/java/<PACKAGE_PATH>/rest/.
+   Verify the class declaration does NOT have the `public` modifier (must be package-private).
+   Expected: zero public controllers.
 
-4. Dual-gate on adapter auto-configs:
-   grep -A3 '@ConditionalOnProperty' target/src/main/java/**/autoconfigure/*AutoConfiguration.java
-   Expected: adapter auto-configs show name = {"enabled", "features.<name>"}
-   Core auto-config shows only name = "<prefix>.enabled"
+4. **Dual-gate on adapter auto-configs** — Open each auto-config in target/src/main/java/<PACKAGE_PATH>/autoconfigure/:
+   - `*EventsAutoConfiguration.java`
+   - `*PersistenceAutoConfiguration.java`
+   - `*RestAutoConfiguration.java`
+   Verify each has `@ConditionalOnProperty` with `name = {"enabled", "features.<name>"}`.
+   Then open `*CoreAutoConfiguration.java` and verify it uses only `name = "<prefix>.enabled"` (no feature sub-key).
 
-5. Feature flag defaults:
-   grep "matchIfMissing.*true" target/src/main/java/**/autoconfigure/
-   Expected: zero results (false is the default when omitted)
+5. **Feature flag defaults** — In the same auto-config files, verify the string
+   `matchIfMissing = true` does NOT appear anywhere.
+   Expected: zero occurrences (false is the default when omitted).
 
-6. META-INF registration:
-   cat target/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports
-   Expected: all auto-config classes listed
+6. **META-INF registration** — Open target/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports.
+   Verify all auto-config classes are listed (Events, Core, Persistence, REST).
 
-Report each check as PASS or FAIL with the actual output.
+Report each check as PASS or FAIL with the file path and relevant line.
 ```
 
 **Expected Output**: All checks PASS.
@@ -1334,6 +1344,8 @@ Before starting each phase, verify. Run the corresponding **G.x** validation pro
 | 2 | All | Phase 1 scaffold validated | Zero infra imports in core/ | Run **G.2** |
 | 3 | All | Phase 2 core validated | Bridge configs exist for all adapters | Run **G.3** |
 | 4 | All | Phase 3 adapters validated | @Bean count == @ConditionalOnMissingBean count | Run **G.4** |
-| 5 | Advanced | Phase 4 auto-config validated | Angular build succeeds (if applicable) | — |
+| 5 | Advanced* | Phase 4 auto-config validated | Angular build succeeds (if applicable) | — |
 | V | All | All phases complete | All verification checks PASS | — |
 | L | All | Verification complete | MIGRATION-LESSONS.md filled in | — |
+
+\* Phase 5 prompts only apply to Advanced tier. For Simple/Standard tiers, Phase 5 scorecard checks auto-pass with "N/A" (no frontend detected).

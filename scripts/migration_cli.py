@@ -115,12 +115,36 @@ RESET = "\033[0m" if _USE_COLOR else ""
 
 # Prompt references for the guide subcommand
 PHASE_PROMPTS = {
-    0: ["Prompt 0.1: Workspace Setup", "Prompt 0.2: Understand Legacy Service"],
-    1: ["Prompt 1.1: Scaffold Package Structure", "Prompt 1.2: Modulith Marker", "Prompt 1.3: CI Pipeline"],
-    2: ["Prompt 2.1: Core Model + Ports", "Prompt 2.2: Domain Service", "Prompt 2.3: Core Tests"],
-    3: ["Prompt 3.1: Persistence Adapter", "Prompt 3.2: REST Adapter", "Prompt 3.3: Events Adapter"],
-    4: ["Prompt 4.1: Auto-Configuration", "Prompt 4.2: Feature Flags", "Prompt 4.3: Context Runner Tests"],
-    5: ["Prompt 5.1: Angular Components", "Prompt 5.2: Frontend Tests"],
+    0: [
+        "Prompt 0.0: Tier Assessment",
+        "Prompt 0.1: Analyze Legacy Service Structure",
+        "Prompt 0.2: Map Legacy to Hexagonal Modules",
+    ],
+    1: [
+        "Prompt 1.1: Generate Package Structure and Marker Class",
+        "Prompt 1.2: Generate Build Configuration",
+    ],
+    2: [
+        "Prompt 2.1: Extract Domain Model",
+        "Prompt 2.2: Create Port Interfaces",
+        "Prompt 2.3: Create Service Layer",
+        "Prompt 2.4: Create Core Unit Tests",
+    ],
+    3: [
+        "Prompt 3.1: Create Persistence Adapter",
+        "Prompt 3.2: Create REST Adapter",
+        "Prompt 3.3: Create Events Adapter",
+        "Prompt 3.4: Create Adapter Tests",
+    ],
+    4: [
+        "Prompt 4.1: Create Auto-Configuration Classes",
+        "Prompt 4.2: Create Properties Configuration Class",
+        "Prompt 4.3: Create Auto-Configuration Tests",
+    ],
+    5: [
+        "Prompt 5.1: Create Angular Library Structure",
+        "Prompt 5.2: Migrate Angular Components",
+    ],
 }
 
 
@@ -419,8 +443,9 @@ class ScorecardChecker:
         found_files = []
         for ci_dir in self.d.ci_paths:
             if ci_dir.is_dir():
-                for yml in ci_dir.glob("*.yml"):
-                    found_files.append(str(yml.relative_to(self.d.target)))
+                for ext in ("*.yml", "*.yaml"):
+                    for yml in ci_dir.glob(ext):
+                        found_files.append(str(yml.relative_to(self.d.target)))
 
         passed = len(found_files) > 0
         detail = ", ".join(found_files) if passed else "No CI pipeline files found"
@@ -505,13 +530,10 @@ class ScorecardChecker:
                     except (OSError, UnicodeDecodeError):
                         continue
                     # Semantic check: file must declare a Java interface.
-                    # Filter comment lines to avoid matching "interface" in comments.
-                    code_lines = [
-                        ln for ln in content.splitlines()
-                        if not ln.strip().startswith("//")
-                        and not ln.strip().startswith("*")
-                        and not ln.strip().startswith("/*")
-                    ]
+                    # Use canonical comment detection to filter comment lines.
+                    lines = content.splitlines()
+                    comment_set = self._compute_comment_lines(lines)
+                    code_lines = [ln for idx, ln in enumerate(lines) if idx not in comment_set]
                     code_content = "\n".join(code_lines)
                     match = re.search(r"\binterface\s+(\w+)", code_content)
                     if match:
@@ -792,8 +814,14 @@ class ScorecardChecker:
             if stripped.startswith("*") and not stripped.startswith("*/"):
                 comment_lines.add(i)
                 continue
-            if "/*" in stripped:
+            if stripped.startswith("/*"):
                 comment_lines.add(i)
+                in_block = True
+                if "*/" in stripped:
+                    in_block = False
+            elif "/*" in stripped:
+                # Mid-line block comment (e.g., `@Bean /* comment */`).
+                # Don't mark this line — it contains real code before the comment.
                 in_block = True
                 if "*/" in stripped:
                     in_block = False
