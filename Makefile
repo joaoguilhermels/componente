@@ -1,10 +1,11 @@
-.PHONY: build test verify clean build-java build-angular test-java test-java-unit test-java-integration test-angular up down install-angular
+.PHONY: build test verify clean build-java build-angular test-java test-java-unit test-java-integration test-angular up down install-angular update-presentation
 
 DOCKER_COMPOSE = docker compose -f docker/docker-compose.yml
 JAVA_RUN = $(DOCKER_COMPOSE) run --rm --no-deps java-build
 JAVA_RUN_DB = $(DOCKER_COMPOSE) run --rm java-build
 JAVA_RUN_TC = $(DOCKER_COMPOSE) run --rm java-build-testcontainers
 NODE_RUN = $(DOCKER_COMPOSE) run --rm node-build
+PYTHON_RUN = $(DOCKER_COMPOSE) run --rm python-build
 
 # ─── Full Build ───────────────────────────────────────────────
 
@@ -67,3 +68,8 @@ down:
 security-scan:
 	@echo "Security scanning is run via Azure Pipelines (see .azure/pipelines/templates/security-scan.yml)."
 	@echo "To run locally, configure the -Psecurity Maven profile in the root pom.xml."
+
+# ─── Presentation ───────────────────────────────────────────
+
+update-presentation:
+	$(PYTHON_RUN) sh -c "pip install --quiet --no-cache-dir pyyaml && python3 scripts/update_presentation.py"

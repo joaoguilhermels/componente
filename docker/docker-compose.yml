@@ -69,6 +69,13 @@ services:
       - node-cache:/home/builder/.npm
     working_dir: /workspace
 
+  python-build:
+    image: python:3.12-alpine
+    volumes:
+      - ../:/workspace
+    working_dir: /workspace
+    command: ["python3", "--version"]
+
 volumes:
   postgres-data:
   maven-cache:

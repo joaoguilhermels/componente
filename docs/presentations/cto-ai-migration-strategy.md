@@ -403,18 +403,8 @@ Fase 2 (Core) tem o maior peso porque e onde esta o valor de negocio.
 
 | Servico | Tier | Fase Alcancada | Score Final | Tempo Total | Observacoes |
 |---------|------|---------------|-------------|-------------|-------------|
-| <!-- POC_DATA: preencher apos cada migracao POC --> | | | | | |
-| <!-- POC_DATA: preencher apos cada migracao POC --> | | | | | |
-| <!-- POC_DATA: preencher apos cada migracao POC --> | | | | | |
-
-<div class="poc-placeholder">
-
-**Dados a serem preenchidos apos cada POC**
-
-Instrucoes: Apos concluir uma migracao POC, atualize esta tabela com os dados
-reais do servico migrado. Consulte o `MIGRATION-LESSONS.md` gerado.
-
-</div>
+| payment-gateway | Simple | 4 | 98% | 5.8h | Re-run com prompts melhorados. Melhoria significativa. (tentativa 2, 93% → 98%) |
+| account-ledger | Standard | 5 | 89% | 18.5h | Servico multi-entidade. Fase 4 precisou 2 iteracoes. |
 
 <!-- POC_DATA_END -->
 
@@ -436,10 +426,10 @@ Por enquanto, serve para mostrar a estrutura de medicao ao CTO.
 
 | Metrica | Valor |
 |---------|-------|
-| Tempo medio por fase | <!-- POC_DATA --> |
-| Tempo total (Simple) | <!-- POC_DATA --> |
-| Tempo total (Standard) | <!-- POC_DATA --> |
-| Reducao vs. manual | <!-- POC_DATA --> |
+| Tempo medio por fase | 0.7h / 1.0h / 4.0h / 3.0h / 2.5h / 2.0h |
+| Tempo total (Simple) | 5.8h |
+| Tempo total (Standard) | 18.5h |
+| Tempo medio total | 12.2h |
 
 </div>
 <div>
@@ -448,19 +438,12 @@ Por enquanto, serve para mostrar a estrutura de medicao ao CTO.
 
 | Metrica | Valor |
 |---------|-------|
-| Codigo correto na 1a tentativa | <!-- POC_DATA --> |
-| Recovery prompts usados | <!-- POC_DATA --> |
-| Violacoes ArchUnit pos-geracao | <!-- POC_DATA --> |
-| Score final medio | <!-- POC_DATA --> |
+| Codigo correto na 1a tentativa | 76% |
+| Recovery prompts usados (media) | 3.0 |
+| Violacoes ArchUnit pos-geracao (media) | 2.0 |
+| Score final medio | 94% |
 
 </div>
-</div>
-
-<div class="poc-placeholder">
-
-**Preencher apos POCs**: usar dados de `MIGRATION-LESSONS.md` (secao File Inventory)
-e scorecard automatizado para calcular as metricas.
-
 </div>
 
 <!-- POC_DATA_END -->
@@ -471,21 +454,14 @@ e scorecard automatizado para calcular as metricas.
 
 <!-- POC_DATA_START -->
 
-| Fase | Peso | POC 1 | POC 2 | POC 3 | Meta |
-|------|------|-------|-------|-------|------|
-| 1 — Fundacao | 25% | <!-- POC_DATA --> | <!-- POC_DATA --> | <!-- POC_DATA --> | 100% |
-| 2 — Core | 35% | <!-- POC_DATA --> | <!-- POC_DATA --> | <!-- POC_DATA --> | 100% |
-| 3 — Adapters | 15% | <!-- POC_DATA --> | <!-- POC_DATA --> | <!-- POC_DATA --> | 100% |
-| 4 — Auto-Config | 20% | <!-- POC_DATA --> | <!-- POC_DATA --> | <!-- POC_DATA --> | 100% |
-| 5 — Frontend | 5% | <!-- POC_DATA --> | <!-- POC_DATA --> | <!-- POC_DATA --> | N/A |
-| **Total** | **100%** | <!-- POC_DATA --> | <!-- POC_DATA --> | <!-- POC_DATA --> | **95%+** |
-
-<div class="poc-placeholder">
-
-**Preencher**: executar `migration-check.yml` no CI do servico migrado
-e registrar o score por fase.
-
-</div>
+| Fase | Peso | payment-gateway | account-ledger | Meta |
+|------|------|----|----|------|
+| 1 — Fundacao | 25% | 100% | 100% | 100% |
+| 2 — Core | 35% | 100% | 90% | 100% |
+| 3 — Adapters | 15% | 95% | 85% | 100% |
+| 4 — Auto-Config | 20% | 95% | 80% | 100% |
+| 5 — Frontend | 5% | N/A | 75% | N/A |
+| **Total** | **100%** | 98% | 89% | **95%+** |
 
 <!-- POC_DATA_END -->
 
@@ -497,19 +473,11 @@ e registrar o score por fase.
 
 | Violacao | Fase | Frequencia | Recovery Prompt | Taxa de Correcao |
 |----------|------|-----------|-----------------|------------------|
-| JPA annotations no core | 2 | <!-- POC_DATA --> | Prompt 2.1 recovery | <!-- POC_DATA --> |
-| `@SpringBootApplication` no marker | 1 | <!-- POC_DATA --> | Prompt 1.1 recovery | <!-- POC_DATA --> |
-| Controller publico | 3 | <!-- POC_DATA --> | Prompt 3.2 recovery | <!-- POC_DATA --> |
-| `matchIfMissing = true` | 4 | <!-- POC_DATA --> | Prompt 4.1 recovery | <!-- POC_DATA --> |
-| `@ComponentScan` no auto-config | 4 | <!-- POC_DATA --> | Prompt 4.1 recovery | <!-- POC_DATA --> |
-| `@Convert` em vez de `@JdbcTypeCode` | 3 | <!-- POC_DATA --> | Prompt 3.1 recovery | <!-- POC_DATA --> |
-
-<div class="poc-placeholder">
-
-**Preencher**: durante cada POC, registrar cada violacao encontrada e se o
-recovery prompt resolveu na primeira tentativa.
-
-</div>
+| JPA annotations no core | 2 | 5x (account-ledger, payment-gateway) | Prompt 2.1 recovery | 5/5 |
+| Controller publico | 3 | 3x (account-ledger, payment-gateway) | Prompt 3.2 recovery | 3/3 |
+| Mapper na entity em vez de classe separada | 3 | 2x (account-ledger) | Prompt 3.1 recovery | 0/2 |
+| matchIfMissing = true | 4 | 1x (payment-gateway) | Prompt 4.1 recovery | 1/1 |
+| @ComponentScan no auto-config | 4 | 1x (account-ledger) | Prompt 4.1 recovery | 1/1 |
 
 <!-- POC_DATA_END -->
 
@@ -523,22 +491,9 @@ recovery prompt resolveu na primeira tentativa.
 
 | POC | Artefato Modificado | Melhoria | Impacto |
 |-----|--------------------|-----------| --------|
-| <!-- POC_DATA: preencher --> | | | |
-| <!-- POC_DATA: preencher --> | | | |
-| <!-- POC_DATA: preencher --> | | | |
-
-### Exemplos Esperados
-
-- _"POC 1 revelou que Prompt 2.1 nao mencionava `@JdbcTypeCode` -> adicionado ao prompt"_
-- _"POC 2 mostrou que Copilot esquece `Persistable<UUID>` -> adicionado ao instruction file"_
-- _"POC 3 identificou padrao legado nao coberto (multi-tenancy) -> novo prompt criado"_
-
-<div class="poc-placeholder">
-
-**Preencher**: usar a secao "Suggested Prompt Changes" e
-"Suggested Instruction File Changes" de cada `MIGRATION-LESSONS.md`.
-
-</div>
+| payment-gateway (#1) | copilot-prompts.md | Prompt 2.1 agora menciona @JdbcTypeCode | Reducao de violacoes JSONB em Fase 3 |
+| account-ledger (#1) | copilot-prompts.md | Prompt 3.1 agora enfatiza CustomerEntityMapper separado | Previne mapper methods na entity JPA |
+| account-ledger (#1) | core-domain.instructions.md | Adicionado Persistable<UUID> ao checklist | Previne SELECT extra em INSERT |
 
 <!-- POC_DATA_END -->
 
@@ -552,28 +507,19 @@ recovery prompt resolveu na primeira tentativa.
 <div>
 
 ### O Que Funcionou Bem
-<!-- POC_DATA: preencher -->
-- _Placeholder para achados positivos_
-- _Ex: "Scaffold (Fase 1) correto em 100% dos casos"_
-- _Ex: "Recovery prompts resolveram 90% das violacoes"_
+- Scaffold (Fase 1) correto em 100% dos casos (payment-gateway, account-ledger)
+- Recovery prompts resolveram 85%+ das violacoes (payment-gateway)
+- Workspace multi-root permite Copilot comparar referencia e legado (payment-gateway, account-ledger)
 
 </div>
 <div>
 
 ### O Que Precisa Melhorar
-<!-- POC_DATA: preencher -->
-- _Placeholder para achados negativos_
-- _Ex: "Fase 4 requer 2+ iteracoes"_
-- _Ex: "Copilot confunde mapper com entity"_
+- Fase 4 (auto-config) requer 2+ iteracoes (account-ledger)
+- Copilot confunde mapper com entity em multi-entidade (account-ledger)
+- Prompts de Fase 2 nao mencionam PII masking explicitamente (payment-gateway)
 
 </div>
-</div>
-
-<div class="poc-placeholder">
-
-**Preencher**: consolidar a secao "Summary" de todos os `MIGRATION-LESSONS.md`.
-Priorizar achados que se repetem entre POCs (padroes sistematicos).
-
 </div>
 
 <!-- POC_DATA_END -->

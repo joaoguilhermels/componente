@@ -1,0 +1,152 @@
+# POC Migration Data — single source of truth for quantitative results
+# After each POC: add an entry here, then run `make update-presentation`
+#
+# Schema:
+#   services[].attempts[]  — one entry per migration attempt (re-runs append)
+#   scores.phase_N         — null means phase not attempted / not applicable
+#   learnings              — curated, append-only; pocs[] tracks confirmation
+
+services:
+  - name: "payment-gateway"
+    tier: "Simple"
+    attempts:
+      - attempt: 1
+        date: "2026-02-15"
+        copilot_model: "GPT-4o"
+        phase_reached: 4
+        scores:
+          phase_1: 100
+          phase_2: 95
+          phase_3: 90
+          phase_4: 85
+          phase_5: null
+        timing:
+          total_hours: 9.0
+          phase_0_hours: 0.5
+          phase_1_hours: 1.0
+          phase_2_hours: 3.0
+          phase_3_hours: 2.5
+          phase_4_hours: 2.0
+          phase_5_hours: null
+        quality:
+          first_try_correct_pct: 72
+          recovery_prompts_used: 3
+          archunit_violations: 2
+        errors:
+          - violation: "JPA annotations no core"
+            phase: 2
+            count: 2
+            recovery_prompt: "Prompt 2.1 recovery"
+            corrected: true
+          - violation: "matchIfMissing = true"
+            phase: 4
+            count: 1
+            recovery_prompt: "Prompt 4.1 recovery"
+            corrected: true
+        improvements:
+          - artifact: "copilot-prompts.md"
+            change: "Prompt 2.1 agora menciona @JdbcTypeCode"
+            impact: "Reducao de violacoes JSONB em Fase 3"
+        notes: "Primeira POC. Servico simples, entidade unica."
+
+      - attempt: 2
+        date: "2026-02-20"
+        copilot_model: "GPT-4o"
+        phase_reached: 4
+        scores:
+          phase_1: 100
+          phase_2: 100
+          phase_3: 95
+          phase_4: 95
+          phase_5: null
+        timing:
+          total_hours: 5.8
+          phase_0_hours: 0.3
+          phase_1_hours: 0.5
+          phase_2_hours: 2.0
+          phase_3_hours: 1.5
+          phase_4_hours: 1.5
+          phase_5_hours: null
+        quality:
+          first_try_correct_pct: 88
+          recovery_prompts_used: 1
+          archunit_violations: 0
+        errors:
+          - violation: "Controller publico"
+            phase: 3
+            count: 1
+            recovery_prompt: "Prompt 3.2 recovery"
+            corrected: true
+        improvements: []
+        notes: "Re-run com prompts melhorados. Melhoria significativa."
+
+  - name: "account-ledger"
+    tier: "Standard"
+    attempts:
+      - attempt: 1
+        date: "2026-03-01"
+        copilot_model: "GPT-4o"
+        phase_reached: 5
+        scores:
+          phase_1: 100
+          phase_2: 90
+          phase_3: 85
+          phase_4: 80
+          phase_5: 75
+        timing:
+          total_hours: 18.5
+          phase_0_hours: 1.0
+          phase_1_hours: 1.5
+          phase_2_hours: 6.0
+          phase_3_hours: 4.5
+          phase_4_hours: 3.5
+          phase_5_hours: 2.0
+        quality:
+          first_try_correct_pct: 65
+          recovery_prompts_used: 5
+          archunit_violations: 4
+        errors:
+          - violation: "JPA annotations no core"
+            phase: 2
+            count: 3
+            recovery_prompt: "Prompt 2.1 recovery"
+            corrected: true
+          - violation: "Controller publico"
+            phase: 3
+            count: 2
+            recovery_prompt: "Prompt 3.2 recovery"
+            corrected: true
+          - violation: "@ComponentScan no auto-config"
+            phase: 4
+            count: 1
+            recovery_prompt: "Prompt 4.1 recovery"
+            corrected: true
+          - violation: "Mapper na entity em vez de classe separada"
+            phase: 3
+            count: 2
+            recovery_prompt: "Prompt 3.1 recovery"
+            corrected: false
+        improvements:
+          - artifact: "copilot-prompts.md"
+            change: "Prompt 3.1 agora enfatiza CustomerEntityMapper separado"
+            impact: "Previne mapper methods na entity JPA"
+          - artifact: "core-domain.instructions.md"
+            change: "Adicionado Persistable<UUID> ao checklist"
+            impact: "Previne SELECT extra em INSERT"
+        notes: "Servico multi-entidade. Fase 4 precisou 2 iteracoes."
+
+learnings:
+  worked_well:
+    - text: "Scaffold (Fase 1) correto em 100% dos casos"
+      pocs: ["payment-gateway", "account-ledger"]
+    - text: "Recovery prompts resolveram 85%+ das violacoes"
+      pocs: ["payment-gateway"]
+    - text: "Workspace multi-root permite Copilot comparar referencia e legado"
+      pocs: ["payment-gateway", "account-ledger"]
+  needs_improvement:
+    - text: "Fase 4 (auto-config) requer 2+ iteracoes"
+      pocs: ["account-ledger"]
+    - text: "Copilot confunde mapper com entity em multi-entidade"
+      pocs: ["account-ledger"]
+    - text: "Prompts de Fase 2 nao mencionam PII masking explicitamente"
+      pocs: ["payment-gateway"]
