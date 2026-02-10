@@ -545,3 +545,99 @@ class TestReplaceBlocks:
         result = up.replace_blocks(content, sample_data)
         assert result.startswith("# Title")
         assert result.endswith("# Footer")
+
+
+# ─── Finding #1: Missing timing/quality keys ─────────────────────────────
+
+
+class TestMissingTimingKey:
+    """Finding #1: Services with missing 'timing' or 'quality' keys should not crash."""
+
+    @staticmethod
+    def _data_without_timing():
+        """Data where attempts lack the 'timing' key entirely."""
+        return {
+            "services": [
+                {
+                    "name": "NoTiming",
+                    "tier": "Simple",
+                    "attempts": [
+                        {
+                            "attempt": 1,
+                            "date": "2025-01-01",
+                            "phase_reached": 2,
+                            "scores": {"phase_1": 100, "phase_2": 80},
+                            "quality": {
+                                "first_try_correct_pct": 75,
+                                "recovery_prompts_used": 2,
+                                "archunit_violations": 1,
+                            },
+                            "notes": "No timing data",
+                        },
+                    ],
+                },
+            ],
+            "learnings": {"worked_well": [], "needs_improvement": []},
+        }
+
+    @staticmethod
+    def _data_without_quality():
+        """Data where attempts lack the 'quality' key entirely."""
+        return {
+            "services": [
+                {
+                    "name": "NoQuality",
+                    "tier": "Simple",
+                    "attempts": [
+                        {
+                            "attempt": 1,
+                            "date": "2025-01-01",
+                            "phase_reached": 2,
+                            "scores": {"phase_1": 100, "phase_2": 80},
+                            "timing": {"total_hours": 5.0},
+                            "notes": "No quality data",
+                        },
+                    ],
+                },
+            ],
+            "learnings": {"worked_well": [], "needs_improvement": []},
+        }
+
+    def test_block_1_without_timing_no_crash(self):
+        data = self._data_without_timing()
+        result = up.generate_block_1(data)
+        assert "NoTiming" in result
+        assert "N/A" in result  # total_hours should show N/A
+
+    def test_block_2_without_timing_no_crash(self):
+        data = self._data_without_timing()
+        result = up.generate_block_2(data)
+        assert "Tempo" in result
+
+    def test_block_2_without_quality_no_crash(self):
+        data = self._data_without_quality()
+        result = up.generate_block_2(data)
+        assert "Qualidade" in result
+
+    def test_block_1_without_timing_or_quality(self):
+        """Attempt with neither timing nor quality."""
+        data = {
+            "services": [
+                {
+                    "name": "Bare",
+                    "tier": "Simple",
+                    "attempts": [
+                        {
+                            "attempt": 1,
+                            "date": "2025-01-01",
+                            "phase_reached": 1,
+                            "scores": {"phase_1": 100},
+                            "notes": "Bare minimum",
+                        },
+                    ],
+                },
+            ],
+            "learnings": {"worked_well": [], "needs_improvement": []},
+        }
+        result = up.generate_block_1(data)
+        assert "Bare" in result

@@ -1905,3 +1905,122 @@ class TestAutomatedVsManual:
         data = json.loads(cli.JsonFormatter.format_result(result))
         assert data["manual_dimensions"] == 10
         assert data["automated_total"] == 13
+
+
+# ─── Finding #2: Clone timeout cleanup ───────────────────────────────────────
+
+class TestCloneTimeoutCleanup:
+    """Finding #2: Partial clone directory should be cleaned up on timeout."""
+
+    @patch("migration_cli._check_git_available")
+    @patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="git clone", timeout=300))
+    def test_clone_timeout_cleans_up_partial_dir(self, mock_run, mock_git_check, tmp_path):
+        """When git clone times out, any partial directory should be removed."""
+        dest = tmp_path / "partial-repo"
+        dest.mkdir()  # Simulate partial clone dir created by git
+        (dest / "partial-file.txt").write_text("partial")
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli._clone_or_pull("https://github.com/org/repo.git", dest)
+
+        assert exc_info.value.code == 1
+        assert not dest.exists(), "Partial clone directory should be cleaned up on timeout"
+
+    @patch("migration_cli._check_git_available")
+    @patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="git clone", timeout=300))
+    def test_clone_timeout_handles_missing_dir(self, mock_run, mock_git_check, tmp_path):
+        """Cleanup should not crash if the directory was never created."""
+        dest = tmp_path / "never-created"
+        with pytest.raises(SystemExit):
+            cli._clone_or_pull("https://github.com/org/repo.git", dest)
+        # Should not raise — cleanup handles non-existent dir gracefully
+
+
+# ─── Finding #3: Escaped backslash in comment detection ──────────────────────
+
+class TestEscapedBackslashCommentDetection:
+    """Finding #3: Escaped backslash before quote should not break comment detection."""
+
+    def test_escaped_backslash_before_quote(self):
+        r"""String s = "path\\"; followed by /* comment */ should detect comment correctly.
+        The \\" is an escaped backslash, NOT an escaped quote — the string ends at the second "."""
+        lines = [r'String s = "path\\"; /* real comment */', "@Bean"]
+        comment_lines = cli.ScorecardChecker._compute_comment_lines(lines)
+        # Line 0 has code before /* — so not a comment line (existing behavior for mid-line comments)
+        # /* and */ on same line — block comment should NOT leak to next line
+        assert 1 not in comment_lines, "@Bean should not be marked as comment"
+
+    def test_escaped_backslash_unclosed_comment(self):
+        r"""String s = "path\\"; /* start — should detect block comment start."""
+        lines = [r'String s = "path\\"; /* block start', " * continued", " */", "@Bean"]
+        comment_lines = cli.ScorecardChecker._compute_comment_lines(lines)
+        # The /* is real (string ended at \\"), so block comment should start
+        assert 1 in comment_lines
+        assert 2 in comment_lines
+        assert 3 not in comment_lines
+
+    def test_single_escaped_quote_in_string(self):
+        r"""String s = "say \"hello\""; /* real comment */ — escaped quotes inside string."""
+        lines = [r'String s = "say \"hello\""; /* real comment */', "@Bean"]
+        comment_lines = cli.ScorecardChecker._compute_comment_lines(lines)
+        # The /* is real (after the string ends at the final unescaped ")
+        # But it's on the same line as code, so line 0 is NOT marked as comment
+        assert 0 not in comment_lines
+        assert 1 not in comment_lines
+
+
+# ─── Finding #4: StateManager phase_times validation ─────────────────────────
+
+class TestPhaseTimesValidation:
+    """Finding #4: phase_times must be validated as a dict during load."""
+
+    def test_load_rejects_non_dict_phase_times(self, tmp_path):
+        """phase_times set to a string should raise ValueError."""
+        import yaml
+        mgr = cli.StateManager(tmp_path)
+        mgr.state_dir.mkdir(parents=True, exist_ok=True)
+        mgr.state_file.write_text(yaml.dump({
+            "service_name": "Svc",
+            "tier": "Standard",
+            "phase_times": "corrupt",
+        }))
+        with pytest.raises(ValueError, match="phase_times"):
+            mgr.load()
+
+    def test_load_rejects_list_phase_times(self, tmp_path):
+        """phase_times set to a list should raise ValueError."""
+        import yaml
+        mgr = cli.StateManager(tmp_path)
+        mgr.state_dir.mkdir(parents=True, exist_ok=True)
+        mgr.state_file.write_text(yaml.dump({
+            "service_name": "Svc",
+            "tier": "Standard",
+            "phase_times": [1, 2, 3],
+        }))
+        with pytest.raises(ValueError, match="phase_times"):
+            mgr.load()
+
+    def test_load_accepts_valid_phase_times(self, tmp_path):
+        """Valid dict phase_times should load successfully."""
+        import yaml
+        mgr = cli.StateManager(tmp_path)
+        mgr.state_dir.mkdir(parents=True, exist_ok=True)
+        mgr.state_file.write_text(yaml.dump({
+            "service_name": "Svc",
+            "tier": "Standard",
+            "phase_times": {"0": {"started": "2025-01-01", "completed": None}},
+        }))
+        state = mgr.load()
+        assert isinstance(state.phase_times, dict)
+
+    def test_load_accepts_missing_phase_times(self, tmp_path):
+        """Missing phase_times defaults to empty dict."""
+        import yaml
+        mgr = cli.StateManager(tmp_path)
+        mgr.state_dir.mkdir(parents=True, exist_ok=True)
+        mgr.state_file.write_text(yaml.dump({
+            "service_name": "Svc",
+            "tier": "Standard",
+        }))
+        state = mgr.load()
+        assert state.phase_times == {}

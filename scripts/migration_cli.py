@@ -20,6 +20,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -838,7 +839,12 @@ class ScorecardChecker:
                 # /*.  Odd count means we're inside a string → skip.
                 slash_star_pos = stripped.find("/*")
                 before = stripped[:slash_star_pos]
-                quote_count = before.count('"') - before.count('\\"')
+                # Count unescaped quotes: a quote preceded by an even number
+                # of backslashes (including zero) is unescaped.  "\\\"" has
+                # one escaped backslash then an escaped quote — still inside
+                # string.  "\\\\" has two escaped backslashes — quote after
+                # that is unescaped.
+                quote_count = len(re.findall(r'(?<!\\)(?:\\\\)*"', before))
                 if quote_count % 2 == 1:
                     # /* appears inside a string literal — not a real comment.
                     continue
@@ -1048,6 +1054,12 @@ class StateManager:
             raise ValueError(f"Invalid state file {self.state_file}: expected YAML mapping, got {type(data).__name__}")
         if "service_name" not in data or not data["service_name"]:
             raise ValueError(f"Invalid state file {self.state_file}: 'service_name' is required")
+        phase_times = data.get("phase_times", {})
+        if not isinstance(phase_times, dict):
+            raise ValueError(
+                f"Invalid state file {self.state_file}: 'phase_times' must be a mapping, "
+                f"got {type(phase_times).__name__}"
+            )
         return MigrationState(
             service_name=data["service_name"],
             base_package=data.get("base_package", ""),
@@ -1056,7 +1068,7 @@ class StateManager:
             tier=data.get("tier", "Standard"),
             has_frontend=data.get("has_frontend", False),
             current_phase=data.get("current_phase", 0),
-            phase_times=data.get("phase_times", {}),
+            phase_times=phase_times,
             errors_encountered=data.get("errors_encountered", []),
             prompts_applied=data.get("prompts_applied", []),
         )
@@ -1461,6 +1473,8 @@ def _clone_or_pull(url: str, dest: Path) -> Path:
         try:
             subprocess.run(["git", "clone", url, str(dest)], check=True, timeout=300)
         except subprocess.TimeoutExpired:
+            # Clean up partial clone directory to avoid stale state
+            shutil.rmtree(dest, ignore_errors=True)
             print(f"{RED}Error: git clone timed out after 5 minutes.{RESET}", file=sys.stderr)
             sys.exit(1)
     return dest

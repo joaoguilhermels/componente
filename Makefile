@@ -78,7 +78,7 @@ update-presentation:
 # ─── Migration CLI ──────────────────────────────────────────────────────
 
 migration-verify:
-	$(PYTHON_RUN) sh -c "pip install --quiet pyyaml==$(PYYAML_VERSION) && python3 scripts/migration_cli.py verify --self-test"
+	$(PYTHON_RUN) sh -c "pip install --quiet pyyaml==$(PYYAML_VERSION) && python3 scripts/migration_cli.py verify --self-test $(ARGS)"
 
 migration-verify-full: migration-verify
 	@echo "── Full: Docker-based architecture tests ──"
@@ -86,10 +86,10 @@ migration-verify-full: migration-verify
 	$(JAVA_RUN) mvn test -Dtest='ArchitectureRulesTest' -Dsurefire.failIfNoSpecifiedTests=false -pl customer-registry-starter
 
 migration-status:
-	$(PYTHON_RUN) sh -c "pip install --quiet pyyaml==$(PYYAML_VERSION) && python3 scripts/migration_cli.py status"
+	$(PYTHON_RUN) sh -c "pip install --quiet pyyaml==$(PYYAML_VERSION) && python3 scripts/migration_cli.py status $(ARGS)"
 
 migration-guide:
-	$(PYTHON_RUN) sh -c "pip install --quiet pyyaml==$(PYYAML_VERSION) && python3 scripts/migration_cli.py guide"
+	$(PYTHON_RUN) sh -c "pip install --quiet pyyaml==$(PYYAML_VERSION) && python3 scripts/migration_cli.py guide $(ARGS)"
 
 migration-init:
 	$(PYTHON_RUN) sh -c "pip install --quiet pyyaml==$(PYYAML_VERSION) && python3 scripts/migration_cli.py init $(ARGS)"

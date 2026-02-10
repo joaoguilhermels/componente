@@ -100,11 +100,12 @@ def generate_block_1(data: dict) -> str:
         attempt = latest_attempt(svc)
         score = weighted_score(attempt["scores"])
         note = progression_note(svc)
+        timing = attempt.get("timing", {})
         lines.append(
             f"| {svc['name']} | {svc['tier']} "
             f"| {attempt['phase_reached']} "
             f"| {score:.0f}% "
-            f"| {fmt_hours(attempt['timing']['total_hours'])} "
+            f"| {fmt_hours(timing.get('total_hours'))} "
             f"| {attempt.get('notes', '')}{note} |"
         )
     lines.append("")
@@ -121,14 +122,16 @@ def generate_block_2(data: dict) -> str:
     latest_attempts = [latest_attempt(svc) for svc in services]
 
     # Timing aggregation (latest attempt per service)
-    total_hours = [a["timing"]["total_hours"] for a in latest_attempts if a["timing"]["total_hours"] is not None]
+    total_hours = [a.get("timing", {}).get("total_hours") for a in latest_attempts]
+    total_hours = [h for h in total_hours if h is not None]
     avg_total = sum(total_hours) / len(total_hours) if total_hours else 0
 
     # Per-phase average timing across latest attempts
     phase_hours = {}
     for phase_num in range(6):
         key = f"phase_{phase_num}_hours"
-        values = [a["timing"].get(key) for a in latest_attempts if a["timing"].get(key) is not None]
+        values = [a.get("timing", {}).get(key) for a in latest_attempts]
+        values = [v for v in values if v is not None]
         phase_hours[phase_num] = sum(values) / len(values) if values else None
 
     # Tier-specific timing
@@ -136,14 +139,14 @@ def generate_block_2(data: dict) -> str:
     for svc in services:
         attempt = latest_attempt(svc)
         tier = svc["tier"]
-        h = attempt["timing"]["total_hours"]
+        h = attempt.get("timing", {}).get("total_hours")
         if h is not None:
             tier_hours.setdefault(tier, []).append(h)
 
     # Quality aggregation (latest attempt per service)
-    first_try_pcts = [a["quality"]["first_try_correct_pct"] for a in latest_attempts]
-    recovery_prompts = [a["quality"]["recovery_prompts_used"] for a in latest_attempts]
-    archunit_violations = [a["quality"]["archunit_violations"] for a in latest_attempts]
+    first_try_pcts = [a.get("quality", {}).get("first_try_correct_pct", 0) for a in latest_attempts]
+    recovery_prompts = [a.get("quality", {}).get("recovery_prompts_used", 0) for a in latest_attempts]
+    archunit_violations = [a.get("quality", {}).get("archunit_violations", 0) for a in latest_attempts]
     scores = [weighted_score(a["scores"]) for a in latest_attempts]
 
     avg_first_try = sum(first_try_pcts) / len(first_try_pcts) if first_try_pcts else 0
