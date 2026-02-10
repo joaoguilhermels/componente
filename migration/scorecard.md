@@ -9,19 +9,38 @@
 |-----------|--------|------------|--------------------|
 | Package structure (hexagonal layout) | 10% | Phase 1 | `test -d src/main/java/**/core && test -d src/main/java/**/persistence && test -d src/main/java/**/rest` |
 | Modulith marker + test passes | 10% | Phase 1 | `mvn test -Dtest=ModulithStructureTest` |
-| Core isolation (zero infra deps) | 15% | Phase 2 | `mvn test -Dtest=ArchitectureRulesTest#corePackageMustNotDependOnInfrastructure` |
+| Core isolation (zero infra imports) | 15% | Phase 2 | `mvn test -Dtest=ArchitectureRulesTest#corePackageMustNotDependOnInfrastructure` |
 | Port interfaces for all external access | 10% | Phase 2 | `find src/main/java -path '*/core/port/*.java' -type f \| wc -l` (expect >= 1) |
 | Bridge config on all adapters | 5% | Phase 3 | `grep -rl 'BridgeConfiguration' src/main/java --include='*.java' \| wc -l` (expect >= 1 per adapter) |
-| `@ConditionalOnMissingBean` on all beans | 5% | Phase 4 | `grep -c '@Bean' src/main/java/**/autoconfigure/*.java` == `grep -c '@ConditionalOnMissingBean' src/main/java/**/autoconfigure/*.java` |
+| `@ConditionalOnMissingBean` on core + bridge beans | 5% | Phase 4 | CLI checks `*CoreAutoConfiguration.java` + bridge configs in persistence/rest/events (not all auto-configs) |
 | Feature flags off by default | 5% | Phase 4 | `grep -c 'havingValue = "true"' src/main/java/**/autoconfigure/*.java` (all properties require explicit opt-in) |
 | Auto-config in META-INF | 5% | Phase 4 | `test -f src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` |
-| Domain unit tests >= 80% coverage | 10% | Phase 2 | JaCoCo report: `xmllint --xpath '//package[@name="core"]/counter[@type="LINE"]/@covered' target/site/jacoco/jacoco.xml` |
+| Domain unit tests exist (>= 3 @Test methods) | 10% | Phase 2 | CLI counts `@Test` annotations in core test files (full coverage requires JaCoCo separately) |
 | Adapter integration tests | 10% | Phase 3 | `find src/test/java -name '*IntegrationTest.java' \| wc -l` (expect >= 1 per adapter) |
 | Auto-config context runner tests | 5% | Phase 4 | `grep -rl 'ApplicationContextRunner' src/test/java --include='*.java' \| wc -l` (expect >= 1) |
 | Angular patterns (standalone + OnPush) | 5% | Phase 5 | `grep -c 'standalone: true' frontend/src/**/*.ts` and `grep -c 'OnPush' frontend/src/**/*.ts` |
 | CI pipeline with architecture gates | 5% | Phase 1 | `test -f .github/workflows/ci.yml \|\| test -f .azure/pipelines/ci.yml` |
 
-**Total: 100%**
+**Total: 100% (Automated)**
+
+> **Note**: The 13 dimensions above are verified automatically by the migration CLI.
+> An additional 10 dimensions require manual/human assessment and are tracked separately
+> in the migration lessons template (`MIGRATION-LESSONS.md`):
+>
+> | Manual Dimension | Phase |
+> |------------------|-------|
+> | Legacy analysis accuracy | Phase 0 |
+> | Tier classification correctness | Phase 0 |
+> | Domain model design quality | Phase 2 |
+> | PII masking completeness | Phase 2 |
+> | Entity-to-model mapping quality | Phase 3 |
+> | Error handling strategy | Phase 3 |
+> | Team velocity / time-to-migrate | Overall |
+> | Knowledge transfer effectiveness | Overall |
+> | Recovery prompt usage rate | Overall |
+> | Prompt first-try accuracy | Overall |
+>
+> The CLI reports: "13/13 automated checks passing (10 manual dimensions require separate review)."
 
 ## Phase Gates
 
@@ -33,16 +52,16 @@ A service must pass all dimensions in a phase before moving to the next:
 - [ ] CI pipeline with architecture gates (5%)
 
 ### Phase 2 -- Core Domain (35%)
-- [ ] Core isolation verified by ArchUnit (15%)
+- [ ] Core isolation — zero infra imports (15%)
 - [ ] Port interfaces defined (10%)
-- [ ] Domain unit test coverage >= 80% (10%)
+- [ ] Domain unit tests exist, >= 3 @Test methods (10%)
 
 ### Phase 3 -- Adapters (15%)
 - [ ] Bridge configs on all adapters (5%)
 - [ ] Integration tests for each adapter (10%)
 
 ### Phase 4 -- Auto-configuration (20%)
-- [ ] `@ConditionalOnMissingBean` coverage (5%)
+- [ ] `@ConditionalOnMissingBean` on core + bridge beans (5%)
 - [ ] Feature flags default to off (5%)
 - [ ] Auto-config registered in META-INF (5%)
 - [ ] Context runner tests (5%)
@@ -79,11 +98,10 @@ jobs:
         run: |
           FILE="src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports"
           test -f "$FILE" && echo "PASS" || echo "FAIL: $FILE missing"
-      - name: Phase 4 - ConditionalOnMissingBean parity
+      - name: Phase 4 - ConditionalOnMissingBean (core + bridges)
         run: |
-          BEANS=$(grep -r '@Bean' src/main/java/**/autoconfigure/ --include='*.java' | wc -l)
-          CONDS=$(grep -r '@ConditionalOnMissingBean' src/main/java/**/autoconfigure/ --include='*.java' | wc -l)
-          test "$BEANS" -eq "$CONDS" && echo "PASS: $BEANS/$CONDS" || echo "FAIL: $BEANS beans vs $CONDS conditionals"
+          # CLI checks CoreAutoConfiguration + bridge configs (persistence/rest/events), not ALL auto-configs
+          python3 scripts/migration_cli.py verify --phase 4 --quiet
 ```
 
 ## Scoring Formula
@@ -92,5 +110,6 @@ jobs:
 score = sum(dimension_weight * (1 if passing else 0))
 ```
 
-A service is considered fully migrated when `score >= 95%` (the 5% Angular phase
-is optional for backend-only services).
+A service is considered fully migrated when `score == 100%`. Backend-only services
+without Angular frontends pass the Phase 5 check automatically (N/A), so they can
+still achieve 100%.

@@ -15,18 +15,80 @@
 
 ## Table of Contents
 
-- [Phase 0: Legacy Analysis](#phase-0--legacy-analysis)
+- [Phase 0: Legacy Analysis](#phase-0--legacy-analysis) (includes Tier Assessment)
 - [Phase 1: Scaffold](#phase-1--scaffold)
 - [Phase 2: Core Extraction](#phase-2--core-extraction)
 - [Phase 3: Adapters](#phase-3--adapters)
 - [Phase 4: Auto-Configuration](#phase-4--auto-configuration)
 - [Phase 5: Frontend](#phase-5--frontend-optional)
+- [Inter-Phase Validation](#inter-phase-validation)
 - [Verification](#verification)
 - [Lessons Learned](#lessons-learned)
 
 ---
 
 ## Phase 0 -- Legacy Analysis
+
+### Prompt 0.0: Tier Assessment
+
+**Context**: Before analyzing code, determine the migration tier. This guides which modules
+and prompts apply.
+
+**Prompt**:
+```
+Before analyzing code, I need to determine the correct migration tier.
+Answer these questions about the legacy service:
+
+1. How many JPA @Entity classes does it have?
+   - 1 entity -> likely Simple
+   - 2-5 entities -> likely Standard
+   - 6+ entities -> likely Advanced
+
+2. Does it have dynamic user-defined fields (JSONB, EAV pattern, or key-value attributes)?
+   - Yes -> at minimum Standard, probably Advanced
+   - No -> could be Simple or Standard
+
+3. Which adapters does it need?
+   - REST only -> Simple
+   - REST + persistence -> Standard
+   - REST + persistence + events -> Standard or Advanced
+   - REST + persistence + events + observability + migration -> Advanced
+
+4. Does it have an Angular/React frontend?
+   - No frontend -> Simple or Standard
+   - Yes, with feature flags and i18n -> Advanced
+
+5. Does it support multi-tenancy or complex lifecycle states?
+   - Yes -> Advanced
+   - No -> Simple or Standard
+
+Based on the answers, classify as:
+
+| Tier | Criteria | Modules | Estimated Phases |
+|------|----------|---------|-----------------|
+| **Simple** | 1 entity, 1-2 adapters, no UI, no events | core, persistence, rest, autoconfigure | Phase 0-4 (skip 5) |
+| **Standard** | 2-5 entities, REST + persistence + events, no complex JSONB | core, persistence, rest, events, autoconfigure | Phase 0-4 (skip 5) |
+| **Advanced** | 6+ entities, JSONB attributes, Angular UI, observability, migration | All modules including frontend | Phase 0-5 |
+
+Output: A one-paragraph justification for the chosen tier and a list of modules to generate.
+Save as target/TIER-ASSESSMENT.md
+```
+
+**Expected Output**: Tier classification with justification and module list.
+
+**Validation**: The chosen tier determines which subsequent prompts are required. Skip Phase 5 prompts for Simple/Standard tiers.
+
+**Recovery**: If the tier seems wrong after Phase 2:
+```
+The migration is more complex than initially assessed.
+Re-evaluate the tier: the presence of <specific pattern> suggests
+upgrading from <current_tier> to <higher_tier>.
+Adjust the migration plan and add the missing modules.
+```
+
+**Lessons Learned Entry**: Record whether the initial tier assessment was correct, or if it needed to be revised mid-migration.
+
+---
 
 ### Prompt 0.1: Analyze Legacy Service Structure
 
@@ -950,6 +1012,128 @@ Signals enable fine-grained change detection with OnPush strategy.
 
 ---
 
+## Inter-Phase Validation
+
+> **Purpose**: Run these validation prompts BETWEEN phases to catch architectural drift early.
+> Each prompt verifies the output of the preceding phase before proceeding to the next one.
+> This prevents cascading errors where a Phase 1 mistake invalidates all of Phase 2-4 work.
+
+### Prompt G.1: Phase 1 Complete — Validate Scaffold
+
+**When**: After completing all Phase 1 prompts, before starting Phase 2.
+
+**Prompt**:
+```
+Validate the scaffold generated in Phase 1 before proceeding to core extraction.
+
+Check these gates:
+1. Marker class exists and has @Modulithic (not @SpringBootApplication)
+2. core/package-info.java has Type.OPEN
+3. All other modules have allowedDependencies = {"core"}
+4. ModulithStructureTest.java compiles and references the correct marker class
+5. ArchitectureRulesTest.java exists with correct base package
+
+Run a quick grep to verify:
+grep -r "@Modulithic" target/src/main/java/
+grep -r "Type.OPEN" target/src/main/java/
+grep -r "allowedDependencies" target/src/main/java/
+
+Report: PASS or FAIL for each gate. If any FAIL, fix before proceeding to Phase 2.
+```
+
+---
+
+### Prompt G.2: Phase 2 Complete — Validate Core Extraction
+
+**When**: After completing all Phase 2 prompts, before starting Phase 3.
+
+**Prompt**:
+```
+Validate the core extraction from Phase 2 before proceeding to adapter creation.
+
+Check these gates:
+1. Zero infrastructure imports in core/:
+   grep -r "import jakarta\.\|import org\.springframework\.data\.\|import org\.springframework\.web\.\|import org\.springframework\.stereotype\." target/src/main/java/**/core/
+   Expected: zero results (note: @Transactional and @Modulithic are allowed exceptions)
+
+2. Port interfaces exist in core/port/ and contain the 'interface' keyword
+3. Domain model classes have static factory methods (no public constructors)
+4. PII is masked in toString() methods
+5. Domain events (if applicable) do not contain PII
+6. Service class has no @Service or @Component annotation
+7. Core unit tests exist and use no Spring context
+
+Report: PASS or FAIL for each gate. If core isolation fails, fix before Phase 3.
+```
+
+---
+
+### Prompt G.3: Phase 3 Complete — Validate Adapters
+
+**When**: After completing all Phase 3 prompts, before starting Phase 4.
+
+**Prompt**:
+```
+Validate the adapters from Phase 3 before proceeding to auto-configuration.
+
+Check these gates:
+1. Bridge config classes are PUBLIC:
+   grep "public class.*Configuration" target/src/main/java/**/persistence/ target/src/main/java/**/rest/ target/src/main/java/**/events/
+
+2. Adapter classes are package-private (NOT public):
+   grep "public class.*Adapter\|public class.*Controller\|public class.*Publisher" target/src/main/java/**/persistence/ target/src/main/java/**/rest/ target/src/main/java/**/events/
+   Expected: zero results
+
+3. Each bridge config has at least one @Bean method with @ConditionalOnMissingBean
+
+4. JPA entities implement Persistable<UUID>
+
+5. Entity mapper is a separate utility class (not methods on JPA entity)
+
+6. @JdbcTypeCode(SqlTypes.JSON) used for JSONB columns (not @Convert)
+
+7. Controller test has @SpringBootApplication inner class
+
+Report: PASS or FAIL for each gate. Fix adapter issues before Phase 4 wiring.
+```
+
+---
+
+### Prompt G.4: Phase 4 Complete — Validate Auto-Configuration
+
+**When**: After completing all Phase 4 prompts, before starting Phase 5 or Verification.
+
+**Prompt**:
+```
+Validate the auto-configuration from Phase 4 before final verification.
+
+Check these gates:
+1. Adapter auto-configs use dual-gate pattern:
+   grep -A3 '@ConditionalOnProperty' target/src/main/java/**/autoconfigure/*AutoConfiguration.java
+   Expected: adapter auto-configs show name = {"enabled", "features.<name>"}
+
+2. Core auto-config uses single gate (master switch only)
+
+3. No matchIfMissing = true anywhere:
+   grep "matchIfMissing.*true" target/src/main/java/**/autoconfigure/
+   Expected: zero results
+
+4. Events auto-config ordered BEFORE core auto-config:
+   grep -A1 "@AutoConfiguration" target/src/main/java/**/autoconfigure/*Events*AutoConfiguration.java
+
+5. META-INF/spring/...AutoConfiguration.imports lists ALL auto-config classes
+
+6. All auto-config classes have structured header comments (ORDERING, GATE, BRIDGE, OVERRIDABLE)
+
+7. Feature flag property names use kebab-case (publish-events, persistence-jpa, rest-api)
+
+8. Properties class has all features defaulting to false
+
+Report: PASS or FAIL for each gate. Fix auto-config issues before proceeding.
+```
+
+---
+
 ## Verification
 
 ### Prompt V.1: Self-Review
@@ -1097,15 +1281,15 @@ Suggested fix: add explicit 'use @JdbcTypeCode, not @Convert' to the prompt."
 
 ## Quick Reference: Prompt Checklist
 
-Before starting each phase, verify:
+Before starting each phase, verify. Run the corresponding **G.x** validation prompt between phases.
 
-| Phase | Pre-Condition | Gate |
-|-------|---------------|------|
-| 0 | Legacy code accessible in workspace | Analysis report generated |
-| 1 | Phase 0 analysis complete | ModulithStructureTest compiles |
-| 2 | Phase 1 scaffold complete | Zero infra imports in core/ |
-| 3 | Phase 2 core extraction complete | Bridge configs exist for all adapters |
-| 4 | Phase 3 adapters complete | @Bean count == @ConditionalOnMissingBean count |
-| 5 | Phase 4 auto-config complete | Angular build succeeds (if applicable) |
-| V | All phases complete | All verification checks PASS |
-| L | Verification complete | MIGRATION-LESSONS.md filled in |
+| Phase | Pre-Condition | Gate | Validation |
+|-------|---------------|------|------------|
+| 0 | Legacy code accessible in workspace | Tier assessment + analysis report | — |
+| 1 | Phase 0 analysis complete | ModulithStructureTest compiles | Run **G.1** |
+| 2 | Phase 1 scaffold validated | Zero infra imports in core/ | Run **G.2** |
+| 3 | Phase 2 core validated | Bridge configs exist for all adapters | Run **G.3** |
+| 4 | Phase 3 adapters validated | @Bean count == @ConditionalOnMissingBean count | Run **G.4** |
+| 5 | Phase 4 auto-config validated | Angular build succeeds (if applicable) | — |
+| V | All phases complete | All verification checks PASS | — |
+| L | Verification complete | MIGRATION-LESSONS.md filled in | — |

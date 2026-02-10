@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import textwrap
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -23,7 +24,6 @@ import pytest
 
 # Import the module under test
 sys_path_entry = str(Path(__file__).resolve().parent)
-import sys
 if sys_path_entry not in sys.path:
     sys.path.insert(0, sys_path_entry)
 
@@ -167,7 +167,7 @@ class TestCloneOrPull:
         mock_git_check.assert_called_once()
         mock_run.assert_called_once_with(
             ["git", "clone", "https://github.com/org/repo.git", str(dest)],
-            check=True,
+            check=True, timeout=300,
         )
         assert result == dest
 
@@ -183,7 +183,7 @@ class TestCloneOrPull:
         mock_git_check.assert_called_once()
         mock_run.assert_called_once_with(
             ["git", "-C", str(dest), "pull", "--ff-only"],
-            check=False,
+            check=False, timeout=300,
         )
         assert result == dest
 
@@ -324,12 +324,16 @@ class TestIndividualChecks:
     def test_port_interfaces_count(self, reference_checker):
         result = reference_checker.check_port_interfaces()
         assert result.passed
-        assert "2 port(s)" in result.detail
+        assert "2 port interface(s)" in result.detail
 
     def test_domain_test_coverage(self, reference_checker):
         result = reference_checker.check_domain_test_coverage()
         assert result.passed
-        assert int(result.detail.split()[0]) >= 1
+        # Format: "N file(s), M @Test method(s): ..."
+        assert "file(s)" in result.detail
+        assert "@Test method(s)" in result.detail
+        file_count = int(result.detail.split()[0])
+        assert file_count >= 1
 
     def test_bridge_configs_all_present(self, reference_checker):
         result = reference_checker.check_bridge_configs()
@@ -358,18 +362,27 @@ class TestIndividualChecks:
     def test_auto_config_meta_inf(self, reference_checker):
         result = reference_checker.check_auto_config_meta_inf()
         assert result.passed
-        assert "6 auto-config" in result.detail
+        # Use >= to avoid breaking when new auto-configs are added
+        count = int(result.detail.split()[0])
+        assert count >= 5, f"Expected >= 5 auto-config(s), got {count}"
 
     def test_context_runner_tests(self, reference_checker):
         result = reference_checker.check_context_runner_tests()
         assert result.passed
-        assert "5 test(s)" in result.detail
+        count = int(result.detail.split()[0])
+        assert count >= 4, f"Expected >= 4 context runner test(s), got {count}"
 
     def test_angular_standalone_onpush(self, reference_checker):
         result = reference_checker.check_angular_standalone_onpush()
         assert result.passed
-        assert "5/5 standalone" in result.detail
-        assert "5/5 OnPush" in result.detail
+        # Verify all components match (X/X pattern) without hardcoding the count
+        import re
+        standalone_match = re.search(r"(\d+)/(\d+) standalone", result.detail)
+        onpush_match = re.search(r"(\d+)/(\d+) OnPush", result.detail)
+        assert standalone_match and standalone_match.group(1) == standalone_match.group(2), \
+            f"Not all components standalone: {result.detail}"
+        assert onpush_match and onpush_match.group(1) == onpush_match.group(2), \
+            f"Not all components OnPush: {result.detail}"
 
 
 # ─── ScorecardChecker: Failure Scenarios (synthetic repos) ──────────────────
@@ -530,28 +543,42 @@ class TestCheckerFailures:
 
 # ─── Comment Detection Tests ─────────────────────────────────────────────────
 
-class TestIsInComment:
-    """Fix #1: Verify _is_in_comment detects // and block comments."""
+class TestCommentDetection:
+    """Verify _compute_comment_lines detects //, /*, and Javadoc comments in O(n)."""
 
     def test_line_comment_detected(self):
         lines = ["// @Bean", "public class Foo {}"]
-        assert cli.ScorecardChecker._is_in_comment(lines, 0) is True
+        comment_lines = cli.ScorecardChecker._compute_comment_lines(lines)
+        assert 0 in comment_lines
+        assert 1 not in comment_lines
 
     def test_javadoc_continuation_detected(self):
         lines = ["/**", " * @Bean annotation", " */"]
-        assert cli.ScorecardChecker._is_in_comment(lines, 1) is True
+        comment_lines = cli.ScorecardChecker._compute_comment_lines(lines)
+        assert 0 in comment_lines
+        assert 1 in comment_lines
+        assert 2 in comment_lines
 
     def test_regular_code_not_comment(self):
         lines = ["@Bean", "public Foo foo() {}"]
-        assert cli.ScorecardChecker._is_in_comment(lines, 0) is False
+        comment_lines = cli.ScorecardChecker._compute_comment_lines(lines)
+        assert 0 not in comment_lines
 
     def test_block_comment_detected(self):
         lines = ["/*", "@Bean", "*/"]
-        assert cli.ScorecardChecker._is_in_comment(lines, 1) is True
+        comment_lines = cli.ScorecardChecker._compute_comment_lines(lines)
+        assert 1 in comment_lines
 
     def test_after_block_comment_not_detected(self):
         lines = ["/* comment */", "@Bean"]
-        assert cli.ScorecardChecker._is_in_comment(lines, 1) is False
+        comment_lines = cli.ScorecardChecker._compute_comment_lines(lines)
+        assert 1 not in comment_lines
+
+    def test_single_line_block_comment(self):
+        lines = ["/* @Bean */", "@Bean"]
+        comment_lines = cli.ScorecardChecker._compute_comment_lines(lines)
+        assert 0 in comment_lines
+        assert 1 not in comment_lines
 
 
 # ─── COMB Per-Method Pairing Tests ──────────────────────────────────────────
@@ -617,6 +644,26 @@ class TestCombPerMethodPairing:
                 @ConditionalOnMissingBean
                 @Bean
                 public Repo repo() { return new Repo(); }
+            }
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_conditional_on_missing_bean()
+        assert result.passed
+
+    def test_comb_with_javadoc_between_still_paired(self, tmp_repo):
+        """@ConditionalOnMissingBean with Javadoc between it and @Bean should still pair (±5 range)."""
+        tmp_path, java_root, _, _ = tmp_repo
+        config = java_root / "autoconfigure" / "CoreAutoConfiguration.java"
+        config.write_text(textwrap.dedent("""\
+            public class CoreAutoConfiguration {
+                @ConditionalOnMissingBean
+                /**
+                 * Creates the customer service.
+                 */
+                @Bean
+                public Foo foo() { return new Foo(); }
             }
         """))
 
@@ -697,6 +744,23 @@ class TestStateManager:
         mgr = cli.StateManager(tmp_path)
         assert not mgr.exists()
 
+    def test_load_rejects_non_mapping(self, tmp_path):
+        """State file with non-dict content should raise ValueError."""
+        mgr = cli.StateManager(tmp_path)
+        mgr.state_dir.mkdir(parents=True, exist_ok=True)
+        mgr.state_file.write_text("just a string\n")
+        with pytest.raises(ValueError, match="expected YAML mapping"):
+            mgr.load()
+
+    def test_load_rejects_missing_service_name(self, tmp_path):
+        """State file without service_name should raise ValueError."""
+        import yaml
+        mgr = cli.StateManager(tmp_path)
+        mgr.state_dir.mkdir(parents=True, exist_ok=True)
+        mgr.state_file.write_text(yaml.dump({"tier": "Standard"}))
+        with pytest.raises(ValueError, match="service_name"):
+            mgr.load()
+
 
 # ─── VerifyResult / PhaseResult Dataclass Tests ─────────────────────────────
 
@@ -746,7 +810,7 @@ class TestJsonFormatter:
         result = reference_checker.run_all()
         json_str = cli.JsonFormatter.format_result(result)
         data = json.loads(json_str)
-        assert data["all_passed"] is True
+        assert data["all_automated_passed"] is True
         assert data["overall_score"] == 100.0
         assert len(data["phases"]) == 5
 
@@ -755,6 +819,17 @@ class TestJsonFormatter:
         data = json.loads(cli.JsonFormatter.format_result(result))
         all_checks = [c for p in data["phases"] for c in p["checks"]]
         assert len(all_checks) == 13
+
+    def test_json_metadata_fields(self, reference_checker):
+        """L1: JSON output includes CLI version, repo path, git hash."""
+        result = reference_checker.run_all()
+        data = json.loads(cli.JsonFormatter.format_result(result))
+        assert data["cli_version"] == cli.CLI_VERSION
+        assert data["repo_path"] == str(cli.REPO_ROOT)
+        assert "git_hash" in data  # may be None in CI
+        assert data["automated_passing"] == 13
+        assert data["automated_total"] == 13
+        assert data["manual_dimensions"] == 10
 
 
 # ─── ResultsRecorder Tests ─────────────────────────────────────────────────
@@ -861,7 +936,7 @@ class TestCmdVerify:
         assert exit_code == 0
         captured = capsys.readouterr()
         data = json.loads(captured.out)
-        assert data["all_passed"] is True
+        assert data["all_automated_passed"] is True
 
     def test_phase_filter(self, capsys):
         parser = cli.build_parser()
@@ -897,7 +972,7 @@ class TestCmdStatus:
         exit_code = cli.cmd_status(args)
         assert exit_code == 0
         data = json.loads(capsys.readouterr().out)
-        assert data["all_passed"] is True
+        assert data["all_automated_passed"] is True
 
     def test_status_quiet_output(self, capsys):
         parser = cli.build_parser()
@@ -945,6 +1020,21 @@ class TestCmdGuide:
         output = capsys.readouterr().out
         assert "Phase 0" in output
         assert "TestSvc" in output
+
+    def test_guide_skip_gate_records_in_state(self, tmp_path, capsys):
+        """--skip-gate should record that the gate was bypassed (audit trail)."""
+        state_mgr = cli.StateManager(tmp_path)
+        state_mgr.create(service_name="SkipTest", tier="Standard")
+
+        parser = cli.build_parser()
+        args = parser.parse_args(["guide", "--target", str(tmp_path), "--phase", "1", "--skip-gate"])
+        exit_code = cli.cmd_guide(args)
+        assert exit_code == 0
+
+        state = state_mgr.load()
+        assert "1" in state.phase_times
+        assert state.phase_times["1"].get("gate_skipped") is True
+        assert "gate_skipped_at" in state.phase_times["1"]
 
 
 # ─── End-to-End: cmd_init ────────────────────────────────────────────────────
@@ -1001,3 +1091,336 @@ class TestCmdRecord:
         exit_code = cli.cmd_record(args)
         assert exit_code == 0
         assert not poc_file.exists()
+
+    def test_record_timing_estimated_key(self, tmp_path, reference_checker):
+        """M2: timing key renamed to timing_estimated, now starts empty (populated later)."""
+        poc_file = tmp_path / "poc-data.yml"
+        recorder = cli.ResultsRecorder(poc_file)
+        result = reference_checker.run_all()
+
+        attempt = recorder.record("TestService", result, dry_run=True)
+
+        assert "timing_estimated" in attempt
+        assert attempt["timing_estimated"] == {}  # empty until populated manually
+        assert "timing" not in attempt  # old key must be gone
+
+
+# ─── Semantic Check Tests (C1) ───────────────────────────────────────────────
+
+class TestSemanticPortChecks:
+    """C1: Port interface check verifies 'interface' keyword."""
+
+    def test_class_in_port_dir_fails(self, tmp_repo):
+        """A class (not interface) in port/ should not count as a port interface."""
+        tmp_path, java_root, _, _ = tmp_repo
+        port_dir = java_root / "core" / "port"
+        port_dir.mkdir(parents=True, exist_ok=True)
+        bad_port = port_dir / "BadPort.java"
+        bad_port.write_text(textwrap.dedent("""\
+            package com.example.svc.core.port;
+            public class BadPort {}
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_port_interfaces()
+        assert not result.passed
+        assert "No port interfaces found" in result.detail
+
+    def test_interface_in_port_dir_passes(self, tmp_repo):
+        """A proper Java interface in port/ should pass."""
+        tmp_path, java_root, _, _ = tmp_repo
+        port_dir = java_root / "core" / "port"
+        port_dir.mkdir(parents=True, exist_ok=True)
+        good_port = port_dir / "GoodPort.java"
+        good_port.write_text(textwrap.dedent("""\
+            package com.example.svc.core.port;
+            public interface GoodPort {
+                void doSomething();
+            }
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_port_interfaces()
+        assert result.passed
+        assert "1 port interface(s)" in result.detail
+
+
+class TestSemanticBridgeConfigChecks:
+    """C1: Bridge config check verifies @Bean methods exist."""
+
+    def test_config_without_bean_fails(self, tmp_repo):
+        """A *Configuration.java without any bean-producing methods should fail."""
+        tmp_path, java_root, _, _ = tmp_repo
+        for pkg in ["persistence", "rest", "events"]:
+            cfg = java_root / pkg / f"{pkg.title()}Configuration.java"
+            cfg.write_text(textwrap.dedent(f"""\
+                public class {pkg.title()}Configuration {{
+                    // empty config, no methods
+                }}
+            """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_bridge_configs()
+        assert not result.passed
+        assert "No @Bean" in result.detail
+
+    def test_config_with_bean_passes(self, tmp_repo):
+        """A *Configuration.java with @Bean should pass."""
+        tmp_path, java_root, _, _ = tmp_repo
+        for pkg in ["persistence", "rest", "events"]:
+            cfg = java_root / pkg / f"{pkg.title()}Configuration.java"
+            cfg.write_text(textwrap.dedent(f"""\
+                public class {pkg.title()}Configuration {{
+                    @Bean
+                    public Object {pkg}Bean() {{ return new Object(); }}
+                }}
+            """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_bridge_configs()
+        assert result.passed
+
+
+class TestSemanticDomainTestChecks:
+    """C1: Domain test coverage check verifies @Test annotations."""
+
+    def test_test_file_without_test_annotation_fails(self, tmp_repo):
+        """A *Test.java without any test method annotations should fail."""
+        tmp_path, _, test_root, _ = tmp_repo
+        core_test = test_root / "core"
+        core_test.mkdir(parents=True, exist_ok=True)
+        bad_test = core_test / "EmptyTest.java"
+        bad_test.write_text(textwrap.dedent("""\
+            package com.example.svc.core;
+            public class EmptyTest {
+                // intentionally empty
+            }
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_domain_test_coverage()
+        assert not result.passed
+        assert "No test files" in result.detail or "without @Test" in result.detail
+
+    def test_test_file_with_insufficient_tests_fails(self, tmp_repo):
+        """A *Test.java with only 1 @Test should fail (minimum 3 @Test methods required)."""
+        tmp_path, _, test_root, _ = tmp_repo
+        core_test = test_root / "core"
+        core_test.mkdir(parents=True, exist_ok=True)
+        single_test = core_test / "DomainModelTest.java"
+        single_test.write_text(textwrap.dedent("""\
+            package com.example.svc.core;
+            import org.junit.jupiter.api.Test;
+            class DomainModelTest {
+                @Test
+                void should_create_model() {}
+            }
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_domain_test_coverage()
+        assert not result.passed
+        assert "minimum 3 required" in result.detail
+
+    def test_test_file_with_sufficient_tests_passes(self, tmp_repo):
+        """A *Test.java with >= 3 @Test methods should pass."""
+        tmp_path, _, test_root, _ = tmp_repo
+        core_test = test_root / "core"
+        core_test.mkdir(parents=True, exist_ok=True)
+        good_test = core_test / "DomainModelTest.java"
+        good_test.write_text(textwrap.dedent("""\
+            package com.example.svc.core;
+            import org.junit.jupiter.api.Test;
+            class DomainModelTest {
+                @Test void should_create_model() {}
+                @Test void should_validate_fields() {}
+                @Test void should_generate_uuid() {}
+            }
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_domain_test_coverage()
+        assert result.passed
+        assert "1 file(s)" in result.detail
+        assert "3 @Test method(s)" in result.detail
+
+
+# ─── Source Root Tests (H2) ──────────────────────────────────────────────────
+
+class TestSourceRoot:
+    """H2: --source-root narrows the module root for multi-module repos."""
+
+    def test_source_root_changes_module_root(self, tmp_path):
+        """RepoDetector with source_root should look under that sub-path."""
+        sub = tmp_path / "billing-core" / "src" / "main" / "java"
+        sub.mkdir(parents=True)
+        detector = cli.RepoDetector(tmp_path, source_root="billing-core")
+        assert str(detector.java_main).endswith(
+            os.path.join("billing-core", "src", "main", "java")
+        )
+
+    def test_source_root_affects_resources(self, tmp_path):
+        detector = cli.RepoDetector(tmp_path, source_root="billing-core")
+        assert str(detector.resources).endswith(
+            os.path.join("billing-core", "src", "main", "resources")
+        )
+
+    def test_source_root_arg_parsing(self):
+        """Parser accepts --source-root on verify subcommand."""
+        parser = cli.build_parser()
+        args = parser.parse_args(["verify", "--source-root", "billing-core"])
+        assert args.source_root == "billing-core"
+
+    def test_source_root_arg_on_guide(self):
+        parser = cli.build_parser()
+        args = parser.parse_args(["guide", "--source-root", "my-module"])
+        assert args.source_root == "my-module"
+
+
+# ─── Version Flag Tests (L3) ─────────────────────────────────────────────────
+
+class TestVersionFlag:
+    """L3: CLI has --version flag."""
+
+    def test_version_flag_exits_zero(self):
+        parser = cli.build_parser()
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["--version"])
+        assert exc_info.value.code == 0
+
+    def test_cli_version_constant_exists(self):
+        assert hasattr(cli, "CLI_VERSION")
+        assert isinstance(cli.CLI_VERSION, str)
+        assert "." in cli.CLI_VERSION
+
+
+# ─── Weight Validation Tests (L2) ────────────────────────────────────────────
+
+class TestWeightValidation:
+    """L2: Dimension methods are validated against DIMENSIONS keys."""
+
+    def test_all_dimensions_have_methods(self):
+        """Every DIMENSIONS key must have a check_<key> method."""
+        for dim_key in cli.DIMENSIONS:
+            method_name = f"check_{dim_key}"
+            assert hasattr(cli.ScorecardChecker, method_name), (
+                f"Missing ScorecardChecker.{method_name}() for dimension '{dim_key}'"
+            )
+
+    def test_validate_runs_without_error(self):
+        """_validate_dimension_methods should not raise."""
+        cli._validate_dimension_methods()
+
+
+# ─── Workspace Setup Check Tests (M5) ────────────────────────────────────────
+
+class TestWorkspaceSetupCheck:
+    """M5: Phase 0 workspace verification."""
+
+    def test_missing_instructions_dir_reported(self, tmp_path):
+        """Missing .github/instructions/ should be flagged."""
+        # Create just pom.xml to avoid a double-issue
+        (tmp_path / "pom.xml").touch()
+
+        state = cli.MigrationState(
+            service_name="Svc", base_package="", db_prefix="", property_prefix="",
+            tier="Standard", has_frontend=False, current_phase=0,
+            phase_times={}, errors_encountered=[],
+        )
+        detector = cli.RepoDetector(tmp_path, state)
+        checker = cli.ScorecardChecker(detector)
+        state_mgr = cli.StateManager(tmp_path)
+        formatter = cli.TerminalFormatter()
+        guide = cli.WorkflowGuide(detector, checker, state_mgr, formatter)
+        issues = guide._check_workspace_setup()
+        assert any(".github/instructions/" in i for i in issues)
+
+    def test_missing_build_file_reported(self, tmp_path):
+        """Missing pom.xml / build.gradle should be flagged."""
+        (tmp_path / ".github" / "instructions").mkdir(parents=True)
+
+        state = cli.MigrationState(
+            service_name="Svc", base_package="", db_prefix="", property_prefix="",
+            tier="Standard", has_frontend=False, current_phase=0,
+            phase_times={}, errors_encountered=[],
+        )
+        detector = cli.RepoDetector(tmp_path, state)
+        checker = cli.ScorecardChecker(detector)
+        state_mgr = cli.StateManager(tmp_path)
+        formatter = cli.TerminalFormatter()
+        guide = cli.WorkflowGuide(detector, checker, state_mgr, formatter)
+        issues = guide._check_workspace_setup()
+        assert any("pom.xml" in i for i in issues)
+
+    def test_all_present_no_issues(self, tmp_path):
+        """With .github/instructions/ and pom.xml, no issues."""
+        (tmp_path / ".github" / "instructions").mkdir(parents=True)
+        (tmp_path / "pom.xml").touch()
+
+        state = cli.MigrationState(
+            service_name="Svc", base_package="", db_prefix="", property_prefix="",
+            tier="Standard", has_frontend=False, current_phase=0,
+            phase_times={}, errors_encountered=[],
+        )
+        detector = cli.RepoDetector(tmp_path, state)
+        checker = cli.ScorecardChecker(detector)
+        state_mgr = cli.StateManager(tmp_path)
+        formatter = cli.TerminalFormatter()
+        guide = cli.WorkflowGuide(detector, checker, state_mgr, formatter)
+        issues = guide._check_workspace_setup()
+        assert len(issues) == 0
+
+
+# ─── Guide State Tracking Tests (H3) ────────────────────────────────────────
+
+class TestGuideStateTracking:
+    """H3: prompts_applied field in migration state."""
+
+    def test_prompts_applied_defaults_to_empty(self, tmp_path):
+        mgr = cli.StateManager(tmp_path)
+        state = mgr.create(service_name="Svc", tier="Standard")
+        loaded = mgr.load()
+        assert loaded.prompts_applied == []
+
+    def test_prompts_applied_roundtrips(self, tmp_path):
+        mgr = cli.StateManager(tmp_path)
+        state = mgr.create(service_name="Svc", tier="Standard")
+        state.prompts_applied = ["Prompt 0.1: Workspace Setup", "Prompt 1.1: Scaffold"]
+        mgr.save(state)
+        loaded = mgr.load()
+        assert loaded.prompts_applied == ["Prompt 0.1: Workspace Setup", "Prompt 1.1: Scaffold"]
+
+    def test_migration_state_has_prompts_applied_field(self):
+        state = cli.MigrationState(
+            service_name="Svc", base_package="", db_prefix="", property_prefix="",
+            tier="Standard", has_frontend=False, current_phase=0,
+            phase_times={}, errors_encountered=[],
+        )
+        assert hasattr(state, "prompts_applied")
+        assert state.prompts_applied == []
+
+
+# ─── Automated vs Manual Dimensions (H4) ─────────────────────────────────────
+
+class TestAutomatedVsManual:
+    """H4: Output clearly distinguishes automated and manual dimensions."""
+
+    def test_terminal_output_mentions_manual(self, reference_checker, capsys):
+        result = reference_checker.run_all()
+        cli.TerminalFormatter().print_result(result)
+        output = capsys.readouterr().out
+        assert "AUTOMATED SCORE" in output
+        assert "10 manual" in output
+
+    def test_json_output_has_manual_count(self, reference_checker):
+        result = reference_checker.run_all()
+        data = json.loads(cli.JsonFormatter.format_result(result))
+        assert data["manual_dimensions"] == 10
+        assert data["automated_total"] == 13

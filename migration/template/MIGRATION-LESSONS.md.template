@@ -48,7 +48,7 @@
 | **Port interfaces created?** | Yes/No -- list ports |
 | **SPI interfaces created?** | Yes/No -- list SPIs |
 | **Service layer clean?** | No Spring stereotypes? |
-| **Event records created?** | Yes/No -- PII masked? |
+| **Event records created?** | Yes/No -- PII masked (not omitted — partially redact, e.g. `***.***.789-00`)? |
 | **Deviations from reference** | Where output differed from Customer.java pattern |
 | **Zero infra imports in core?** | Verified with grep? |
 

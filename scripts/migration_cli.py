@@ -31,6 +31,8 @@ import yaml
 
 # ─── Constants ──────────────────────────────────────────────────────────────
 
+CLI_VERSION = "0.2.0"
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 
@@ -67,9 +69,9 @@ DIMENSIONS = {
     "package_structure":         {"phase": 1, "weight": 0.10, "label": "Package structure (hexagonal layout)"},
     "modulith_marker":           {"phase": 1, "weight": 0.10, "label": "Modulith marker + test exists"},
     "ci_pipeline":               {"phase": 1, "weight": 0.05, "label": "CI pipeline with architecture gates"},
-    "core_isolation":            {"phase": 2, "weight": 0.15, "label": "Core isolation (zero infra deps)"},
+    "core_isolation":            {"phase": 2, "weight": 0.15, "label": "Core isolation (zero infra imports)"},
     "port_interfaces":           {"phase": 2, "weight": 0.10, "label": "Port interfaces for external access"},
-    "domain_test_coverage":      {"phase": 2, "weight": 0.10, "label": "Domain unit test coverage"},
+    "domain_test_coverage":      {"phase": 2, "weight": 0.10, "label": "Domain unit tests exist (coverage requires JaCoCo)"},
     "bridge_configs":            {"phase": 3, "weight": 0.05, "label": "Bridge configs on all adapters"},
     "adapter_integration_tests": {"phase": 3, "weight": 0.10, "label": "Adapter integration tests"},
     "conditional_on_missing_bean": {"phase": 4, "weight": 0.05, "label": "@ConditionalOnMissingBean coverage"},
@@ -79,11 +81,26 @@ DIMENSIONS = {
     "angular_standalone_onpush": {"phase": 5, "weight": 0.05, "label": "Angular standalone + OnPush"},
 }
 
-# Validate weights at import time (prevents silent scoring bugs from future edits)
-assert abs(sum(d["weight"] for d in DIMENSIONS.values()) - 1.0) < 0.001, \
-    f"Dimension weights must sum to 1.0, got {sum(d['weight'] for d in DIMENSIONS.values())}"
-assert abs(sum(p["weight"] for p in PHASES.values()) - 1.0) < 0.001, \
-    f"Phase weights must sum to 1.0, got {sum(p['weight'] for p in PHASES.values())}"
+# Validate weights and dimension names at import time (prevents silent bugs).
+# Uses explicit raise instead of assert — assert is stripped by python -O.
+_dim_weight_sum = sum(d["weight"] for d in DIMENSIONS.values())
+if abs(_dim_weight_sum - 1.0) >= 0.001:
+    raise ValueError(f"Dimension weights must sum to 1.0, got {_dim_weight_sum}")
+_phase_weight_sum = sum(p["weight"] for p in PHASES.values())
+if abs(_phase_weight_sum - 1.0) >= 0.001:
+    raise ValueError(f"Phase weights must sum to 1.0, got {_phase_weight_sum}")
+
+# Deferred check: verify every DIMENSIONS key has a matching check_<key> method on ScorecardChecker.
+# This runs once on first use, catching typos that would silently get zero weight.
+def _validate_dimension_methods() -> None:
+    """Verify every DIMENSIONS key maps to a check method. Called lazily at first use."""
+    for dim_key in DIMENSIONS:
+        method_name = f"check_{dim_key}"
+        if not hasattr(ScorecardChecker, method_name):
+            raise AttributeError(
+                f"DIMENSIONS key '{dim_key}' has no matching ScorecardChecker.{method_name}() method. "
+                f"This is likely a typo — the dimension would silently score zero."
+            )
 
 # ANSI color codes (disabled when stdout is not a TTY or NO_COLOR is set)
 _USE_COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
@@ -183,16 +200,24 @@ class MigrationState:
     current_phase: int
     phase_times: dict
     errors_encountered: list
+    prompts_applied: list = field(default_factory=list)
 
 
 # ─── RepoDetector ───────────────────────────────────────────────────────────
 
 class RepoDetector:
-    """Detect repo type and compute source roots."""
+    """Detect repo type and compute source roots.
 
-    def __init__(self, target_path: Optional[Path] = None, state: Optional[MigrationState] = None):
+    For multi-module Maven/Gradle projects where src/main/java/ is not at the
+    repo root, use ``source_root`` to point at the module directory containing
+    the source tree (e.g. ``billing-service/billing-core``).
+    """
+
+    def __init__(self, target_path: Optional[Path] = None, state: Optional[MigrationState] = None,
+                 source_root: Optional[str] = None):
         self.target = (target_path or REPO_ROOT).resolve()
         self.state = state
+        self._source_root = source_root
         self._is_reference = (self.target / REFERENCE_MARKER).is_dir()
 
     @property
@@ -215,26 +240,38 @@ class RepoDetector:
         return ""
 
     @property
+    def _module_root(self) -> Path:
+        """Root directory containing src/ — either target, a source_root sub-path, or the reference module."""
+        if self._is_reference:
+            return self.target / REFERENCE_MARKER
+        if self._source_root:
+            return self.target / self._source_root
+        return self.target
+
+    @property
+    def module_root(self) -> Path:
+        """Public accessor for the module root directory."""
+        return self._module_root
+
+    @property
     def java_main(self) -> Path:
         if self._is_reference:
-            return self.target / REFERENCE_MARKER / "src" / "main" / "java" / "com" / "onefinancial" / "customer"
-        base = self.target / "src" / "main" / "java"
+            return self._module_root / "src" / "main" / "java" / "com" / "onefinancial" / "customer"
+        base = self._module_root / "src" / "main" / "java"
         pkg_path = self._base_package_path
         return base / pkg_path if pkg_path else base
 
     @property
     def java_test(self) -> Path:
         if self._is_reference:
-            return self.target / REFERENCE_MARKER / "src" / "test" / "java" / "com" / "onefinancial" / "customer"
-        base = self.target / "src" / "test" / "java"
+            return self._module_root / "src" / "test" / "java" / "com" / "onefinancial" / "customer"
+        base = self._module_root / "src" / "test" / "java"
         pkg_path = self._base_package_path
         return base / pkg_path if pkg_path else base
 
     @property
     def resources(self) -> Path:
-        if self._is_reference:
-            return self.target / REFERENCE_MARKER / "src" / "main" / "resources"
-        return self.target / "src" / "main" / "resources"
+        return self._module_root / "src" / "main" / "resources"
 
     @property
     def frontend(self) -> Optional[Path]:
@@ -258,7 +295,12 @@ class RepoDetector:
 class ScorecardChecker:
     """Runs the 13 fast scorecard checks against a detected repo."""
 
+    _methods_validated = False
+
     def __init__(self, detector: RepoDetector):
+        if not ScorecardChecker._methods_validated:
+            _validate_dimension_methods()
+            ScorecardChecker._methods_validated = True
         self.d = detector
 
     def run_all(self) -> VerifyResult:
@@ -438,7 +480,7 @@ class ScorecardChecker:
         return False
 
     def check_port_interfaces(self) -> CheckResult:
-        """Verify at least 1 port interface exists in core/port/."""
+        """Verify at least 1 port interface exists in core/port/ and contains the 'interface' keyword."""
         dim = DIMENSIONS["port_interfaces"]
         core_dir = self._find_package_dir("core")
         if not core_dir:
@@ -447,31 +489,76 @@ class ScorecardChecker:
                 weight=dim["weight"], phase=dim["phase"], label=dim["label"],
             )
 
-        port_files = []
+        interface_files = []
+        non_interface_files = []
         for port_dir in core_dir.rglob("port"):
             if port_dir.is_dir():
-                port_files.extend(f.name for f in port_dir.glob("*.java"))
+                for f in port_dir.glob("*.java"):
+                    try:
+                        content = f.read_text(encoding="utf-8")
+                    except (OSError, UnicodeDecodeError):
+                        continue
+                    # Semantic check: file must declare a Java interface.
+                    # Filter comment lines to avoid matching "interface" in comments.
+                    code_lines = [
+                        ln for ln in content.splitlines()
+                        if not ln.strip().startswith("//")
+                        and not ln.strip().startswith("*")
+                        and not ln.strip().startswith("/*")
+                    ]
+                    code_content = "\n".join(code_lines)
+                    if re.search(r"\binterface\s+\w+", code_content):
+                        interface_files.append(f.name)
+                    else:
+                        non_interface_files.append(f.name)
 
-        passed = len(port_files) >= 1
-        detail = f"{len(port_files)} port(s): {', '.join(port_files)}" if passed else "No port interfaces found in core/port/"
+        passed = len(interface_files) >= 1
+        detail = f"{len(interface_files)} port interface(s): {', '.join(interface_files)}"
+        if non_interface_files:
+            detail += f" ({len(non_interface_files)} non-interface file(s) in port/: {', '.join(non_interface_files)})"
+        if not passed:
+            detail = "No port interfaces found in core/port/ (files must contain 'interface' keyword)"
         return CheckResult(
             dimension="port_interfaces", passed=passed, detail=detail,
             weight=dim["weight"], phase=dim["phase"], label=dim["label"],
         )
 
     def check_domain_test_coverage(self) -> CheckResult:
-        """Verify at least 1 test file exists for core domain packages."""
+        """Verify test files with @Test methods exist for core domain packages.
+
+        Note: This checks for test *existence*, not coverage percentage.
+        Full line-coverage verification requires JaCoCo (run separately).
+        """
         dim = DIMENSIONS["domain_test_coverage"]
         core_test_dir = self._find_test_package_dir("core")
-        test_count = 0
+        test_file_count = 0
+        test_method_count = 0
         test_files = []
+        empty_test_files = []
         if core_test_dir:
             for test_file in core_test_dir.rglob("*Test.java"):
-                test_count += 1
-                test_files.append(test_file.name)
+                try:
+                    content = test_file.read_text(encoding="utf-8")
+                except (OSError, UnicodeDecodeError):
+                    continue
+                # Count @Test annotations (not just file presence)
+                methods = len(re.findall(r"@Test\b", content))
+                if methods > 0:
+                    test_file_count += 1
+                    test_method_count += methods
+                    test_files.append(test_file.name)
+                else:
+                    empty_test_files.append(test_file.name)
 
-        passed = test_count >= 1
-        detail = f"{test_count} test(s): {', '.join(test_files[:5])}" if passed else "No test files for core domain"
+        passed = test_file_count >= 1 and test_method_count >= 3
+        detail = f"{test_file_count} file(s), {test_method_count} @Test method(s): {', '.join(test_files[:5])}"
+        if empty_test_files:
+            detail += f" ({len(empty_test_files)} *Test.java file(s) without @Test methods)"
+        if not passed:
+            if test_method_count > 0:
+                detail = f"Only {test_method_count} @Test method(s) in {test_file_count} file(s) — minimum 3 required"
+            else:
+                detail = "No test files with @Test methods for core domain"
         return CheckResult(
             dimension="domain_test_coverage", passed=passed, detail=detail,
             weight=dim["weight"], phase=dim["phase"], label=dim["label"],
@@ -480,11 +567,12 @@ class ScorecardChecker:
     # ── Phase 3: Adapters ──
 
     def check_bridge_configs(self) -> CheckResult:
-        """Verify bridge Configuration classes exist in adapter packages."""
+        """Verify bridge Configuration classes exist in adapter packages and contain @Bean methods."""
         dim = DIMENSIONS["bridge_configs"]
         adapter_packages = ["persistence", "rest", "events"]
         found = []
         missing = []
+        no_bean = []
 
         for pkg in adapter_packages:
             pkg_dir = self._find_package_dir(pkg)
@@ -492,16 +580,33 @@ class ScorecardChecker:
                 missing.append(pkg)
                 continue
             config_files = list(pkg_dir.glob("*Configuration.java"))
-            if config_files:
-                found.append(f"{pkg}/{config_files[0].name}")
-            else:
+            if not config_files:
                 missing.append(pkg)
+                continue
+            # Semantic check: at least one config file must contain @Bean
+            has_bean = False
+            for cfg in config_files:
+                try:
+                    content = cfg.read_text(encoding="utf-8")
+                except (OSError, UnicodeDecodeError):
+                    continue
+                if re.search(r"@Bean\b", content):
+                    has_bean = True
+                    found.append(f"{pkg}/{cfg.name}")
+                    break
+            if not has_bean:
+                no_bean.append(f"{pkg}/{config_files[0].name}")
 
-        passed = len(missing) == 0
+        passed = len(missing) == 0 and len(no_bean) == 0
         if passed:
             detail = ", ".join(found)
         else:
-            detail = f"Missing bridge config in: {', '.join(missing)}"
+            parts = []
+            if missing:
+                parts.append(f"Missing bridge config in: {', '.join(missing)}")
+            if no_bean:
+                parts.append(f"No @Bean methods in: {', '.join(no_bean)}")
+            detail = "; ".join(parts)
         return CheckResult(
             dimension="bridge_configs", passed=passed, detail=detail,
             weight=dim["weight"], phase=dim["phase"], label=dim["label"],
@@ -554,21 +659,25 @@ class ScorecardChecker:
             except (OSError, UnicodeDecodeError):
                 continue
             lines = content.splitlines()
+            comment_lines = self._compute_comment_lines(lines)
             # Collect all @Bean and @ConditionalOnMissingBean line indices
             bean_indices = []
             comb_indices = []
             for i, line in enumerate(lines):
-                if bean_pattern.match(line) and not self._is_in_comment(lines, i):
+                if i in comment_lines:
+                    continue
+                if bean_pattern.match(line):
                     bean_indices.append(i)
-                if comb_pattern.match(line) and not self._is_in_comment(lines, i):
+                if comb_pattern.match(line):
                     comb_indices.append(i)
 
-            # Greedily pair each @Bean with nearest unused @COMB within ±2 lines
+            # Greedily pair each @Bean with nearest unused @COMB within ±5 lines
+            # (±5 allows for Javadoc blocks between annotations)
             used_combs = set()
             for bean_idx in bean_indices:
                 total_beans += 1
                 candidates = sorted(
-                    (c for c in comb_indices if c not in used_combs and abs(c - bean_idx) <= 2),
+                    (c for c in comb_indices if c not in used_combs and abs(c - bean_idx) <= 5),
                     key=lambda c: abs(c - bean_idx),
                 )
                 if candidates:
@@ -587,21 +696,29 @@ class ScorecardChecker:
         )
 
     @staticmethod
-    def _is_in_comment(lines: list[str], line_idx: int) -> bool:
-        """Check if a line is inside a block comment or is a line comment."""
-        target = lines[line_idx].strip()
-        # Line comment (// at start) or Javadoc continuation (* at start)
-        if target.startswith("//") or (target.startswith("*") and not target.startswith("*/")):
-            return True
-        # Block comment tracking up to this line
+    def _compute_comment_lines(lines: list[str]) -> set[int]:
+        """Precompute set of line indices inside comments. Single O(n) pass."""
+        comment_lines: set[int] = set()
         in_block = False
-        for i in range(line_idx + 1):
-            line = lines[i]
-            if "/*" in line:
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if in_block:
+                comment_lines.add(i)
+                if "*/" in stripped:
+                    in_block = False
+                continue
+            if stripped.startswith("//"):
+                comment_lines.add(i)
+                continue
+            if stripped.startswith("*") and not stripped.startswith("*/"):
+                comment_lines.add(i)
+                continue
+            if "/*" in stripped:
+                comment_lines.add(i)
                 in_block = True
-            if "*/" in line:
-                in_block = False
-        return in_block
+                if "*/" in stripped:
+                    in_block = False
+        return comment_lines
 
     def check_feature_flags_default(self) -> CheckResult:
         """Verify zero occurrences of matchIfMissing = true (outside comments)."""
@@ -734,20 +851,20 @@ class ScorecardChecker:
     # ── Helpers ──
 
     def _find_package_dir(self, package_name: str) -> Optional[Path]:
-        """Find a package directory under java_main."""
-        candidates = list(self.d.java_main.rglob(package_name))
-        for c in candidates:
-            if c.is_dir() and c.name == package_name:
-                return c
-        return None
+        """Find a package directory under java_main (shallowest match for determinism)."""
+        candidates = sorted(
+            (c for c in self.d.java_main.rglob(package_name) if c.is_dir() and c.name == package_name),
+            key=lambda p: len(p.parts),
+        )
+        return candidates[0] if candidates else None
 
     def _find_test_package_dir(self, package_name: str) -> Optional[Path]:
-        """Find a package directory under java_test."""
-        candidates = list(self.d.java_test.rglob(package_name))
-        for c in candidates:
-            if c.is_dir() and c.name == package_name:
-                return c
-        return None
+        """Find a package directory under java_test (shallowest match for determinism)."""
+        candidates = sorted(
+            (c for c in self.d.java_test.rglob(package_name) if c.is_dir() and c.name == package_name),
+            key=lambda p: len(p.parts),
+        )
+        return candidates[0] if candidates else None
 
 
 # ─── StateManager ───────────────────────────────────────────────────────────
@@ -765,6 +882,10 @@ class StateManager:
     def load(self) -> MigrationState:
         with open(self.state_file, encoding="utf-8") as f:
             data = yaml.safe_load(f)
+        if not isinstance(data, dict):
+            raise ValueError(f"Invalid state file {self.state_file}: expected YAML mapping, got {type(data).__name__}")
+        if "service_name" not in data or not data["service_name"]:
+            raise ValueError(f"Invalid state file {self.state_file}: 'service_name' is required")
         return MigrationState(
             service_name=data["service_name"],
             base_package=data.get("base_package", ""),
@@ -775,6 +896,7 @@ class StateManager:
             current_phase=data.get("current_phase", 0),
             phase_times=data.get("phase_times", {}),
             errors_encountered=data.get("errors_encountered", []),
+            prompts_applied=data.get("prompts_applied", []),
         )
 
     def save(self, state: MigrationState) -> None:
@@ -789,6 +911,7 @@ class StateManager:
             "current_phase": state.current_phase,
             "phase_times": state.phase_times,
             "errors_encountered": state.errors_encountered,
+            "prompts_applied": state.prompts_applied,
         }
         with open(self.state_file, "w", encoding="utf-8") as f:
             yaml.dump(data, f, default_flow_style=False, sort_keys=False)
@@ -823,6 +946,26 @@ class WorkflowGuide:
         self.state_mgr = state_mgr
         self.fmt = formatter
 
+    def _check_workspace_setup(self) -> list[str]:
+        """Check workspace readiness (Phase 0). Returns list of issues, empty if OK."""
+        issues = []
+        instructions_dir = self.detector.target / ".github" / "instructions"
+        if not instructions_dir.is_dir():
+            issues.append(
+                ".github/instructions/ directory not found — "
+                "Copilot Chat won't auto-load migration workflow instructions"
+            )
+        pom = self.detector.module_root / "pom.xml"
+        if not pom.is_file():
+            build_gradle = self.detector.module_root / "build.gradle"
+            build_gradle_kts = self.detector.module_root / "build.gradle.kts"
+            if not build_gradle.is_file() and not build_gradle_kts.is_file():
+                issues.append(
+                    "No pom.xml or build.gradle found in source root — "
+                    "use --source-root if this is a multi-module project"
+                )
+        return issues
+
     def run(self, target_phase: Optional[int] = None, skip_gate: bool = False) -> None:
         if self.detector.is_reference:
             print(f"\n{YELLOW}Self-test mode: running all checks against reference repo.{RESET}\n")
@@ -842,9 +985,20 @@ class WorkflowGuide:
             print(f"\n{CYAN}{BOLD}Phase 0: Workspace Setup{RESET}")
             print(f"  Service: {state.service_name} ({state.tier})")
             print(f"  Base package: {state.base_package or '(not set)'}")
+
+            # Workspace readiness checks (non-gating but informational)
+            workspace_issues = self._check_workspace_setup()
+            if workspace_issues:
+                print(f"\n{YELLOW}{BOLD}Workspace issues:{RESET}")
+                for issue in workspace_issues:
+                    print(f"  {YELLOW}!{RESET} {issue}")
+            else:
+                print(f"\n  {GREEN}✓{RESET} Workspace setup looks good")
+
             print(f"\n{BOLD}Relevant Prompts:{RESET}")
             for p in PHASE_PROMPTS.get(0, []):
-                print(f"  - {p}")
+                icon = f"{GREEN}✓{RESET}" if p in state.prompts_applied else f"{DIM}○{RESET}"
+                print(f"  {icon} {p}")
             print(f"\n{DIM}When ready, advance to Phase 1 with: guide --phase 1{RESET}\n")
             return
 
@@ -854,7 +1008,8 @@ class WorkflowGuide:
 
         print(f"{BOLD}Relevant Prompts:{RESET}")
         for p in PHASE_PROMPTS.get(phase, []):
-            print(f"  - {p}")
+            icon = f"{GREEN}✓{RESET}" if p in state.prompts_applied else f"{DIM}○{RESET}"
+            print(f"  {icon} {p}")
         print()
 
         if not skip_gate:
@@ -882,6 +1037,14 @@ class WorkflowGuide:
                 print(f"\n{RED}{BOLD}Gate FAILED.{RESET} Fix failing checks before advancing.")
         else:
             print(f"{DIM}(Gate check skipped with --skip-gate){RESET}\n")
+            # Record that gate was skipped (audit trail)
+            now = datetime.now(timezone.utc).isoformat()
+            phase_key = str(phase)
+            if phase_key not in state.phase_times:
+                state.phase_times[phase_key] = {"started": now, "completed": None}
+            state.phase_times[phase_key]["gate_skipped"] = True
+            state.phase_times[phase_key]["gate_skipped_at"] = now
+            self.state_mgr.save(state)
 
 
 # ─── ResultsRecorder ────────────────────────────────────────────────────────
@@ -940,7 +1103,7 @@ class ResultsRecorder:
             "copilot_model": "automated-verify",
             "phase_reached": phase_reached,
             "scores": scores,
-            "timing": {"total_hours": None, **{f"phase_{i}_hours": None for i in range(6)}},
+            "timing_estimated": {},  # populated manually or by future timing integration
             "quality": {
                 "first_try_correct_pct": 0,
                 "recovery_prompts_used": 0,
@@ -988,8 +1151,9 @@ class TerminalFormatter:
 
         print(f" {separator}")
         total_icon = f"{GREEN}" if result.all_passed else f"{RED}"
-        print(f" {BOLD}{total_icon}OVERALL SCORE: {result.overall_score:.0f}%  "
-              f"({result.passing_dimensions}/{result.total_dimensions} dimensions passing){RESET}")
+        print(f" {BOLD}{total_icon}AUTOMATED SCORE: {result.overall_score:.0f}%  "
+              f"({result.passing_dimensions}/{result.total_dimensions} automated checks passing){RESET}")
+        print(f" {DIM} 10 manual assessment dimensions require separate review{RESET}")
         print(f" {separator}\n")
 
 
@@ -999,15 +1163,31 @@ class JsonFormatter:
     """JSON output for machine consumption."""
 
     @staticmethod
+    def _git_hash() -> Optional[str]:
+        """Best-effort HEAD commit hash."""
+        try:
+            out = subprocess.run(
+                ["git", "-C", str(REPO_ROOT), "rev-parse", "--short", "HEAD"],
+                capture_output=True, text=True, check=False, timeout=10,
+            )
+            return out.stdout.strip() or None
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return None
+
+    @staticmethod
     def format_result(result: VerifyResult) -> str:
         data = {
+            "cli_version": CLI_VERSION,
             "repo_name": result.repo_name,
+            "repo_path": str(REPO_ROOT),
+            "git_hash": JsonFormatter._git_hash(),
             "is_self_test": result.is_self_test,
             "timestamp": result.timestamp,
             "overall_score": round(result.overall_score, 1),
-            "passing": result.passing_dimensions,
-            "total": result.total_dimensions,
-            "all_passed": result.all_passed,
+            "automated_passing": result.passing_dimensions,
+            "automated_total": result.total_dimensions,
+            "manual_dimensions": 10,
+            "all_automated_passed": result.all_passed,
             "phases": [],
         }
         for phase in result.phases:
@@ -1069,13 +1249,16 @@ def _repo_name_from_url(url: str) -> str:
 def _check_git_available() -> None:
     """Verify git is installed and accessible. Exit with clear error if not."""
     try:
-        subprocess.run(["git", "--version"], check=True, capture_output=True)
+        subprocess.run(["git", "--version"], check=True, capture_output=True, timeout=10)
     except FileNotFoundError:
         print(f"{RED}Error: 'git' is not installed or not on PATH.{RESET}", file=sys.stderr)
         print("  The --target flag with a URL requires git for cloning.", file=sys.stderr)
         print("  Options:", file=sys.stderr)
         print("    1. Clone the repo manually and pass the local path instead.", file=sys.stderr)
         print("    2. Install git (e.g., apk add git in Alpine containers).", file=sys.stderr)
+        sys.exit(1)
+    except subprocess.TimeoutExpired:
+        print(f"{RED}Error: 'git --version' timed out.{RESET}", file=sys.stderr)
         sys.exit(1)
 
 
@@ -1084,15 +1267,22 @@ def _clone_or_pull(url: str, dest: Path) -> Path:
     _check_git_available()
     if dest.is_dir() and (dest / ".git").is_dir():
         print(f"{CYAN}Updating existing clone: {dest.name}{RESET}")
-        subprocess.run(
-            ["git", "-C", str(dest), "pull", "--ff-only"],
-            check=False,  # non-fatal — stale clone still usable
-        )
+        try:
+            subprocess.run(
+                ["git", "-C", str(dest), "pull", "--ff-only"],
+                check=False, timeout=300,  # non-fatal — stale clone still usable
+            )
+        except subprocess.TimeoutExpired:
+            print(f"{YELLOW}Warning: git pull timed out after 5 min, using existing clone.{RESET}")
     else:
         dest.parent.mkdir(parents=True, exist_ok=True)
         print(f"{CYAN}Cloning {url}{RESET}")
         print(f"  -> {dest}\n")
-        subprocess.run(["git", "clone", url, str(dest)], check=True)
+        try:
+            subprocess.run(["git", "clone", url, str(dest)], check=True, timeout=300)
+        except subprocess.TimeoutExpired:
+            print(f"{RED}Error: git clone timed out after 5 minutes.{RESET}", file=sys.stderr)
+            sys.exit(1)
     return dest
 
 
@@ -1120,6 +1310,7 @@ def resolve_target(raw_target: Optional[str]) -> Path:
 def cmd_verify(args: argparse.Namespace) -> int:
     """Run scorecard checks."""
     target_path = resolve_target(args.target)
+    source_root = getattr(args, "source_root", None)
 
     # Auto-detect self-test
     if args.self_test or (target_path / REFERENCE_MARKER).is_dir():
@@ -1127,7 +1318,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
     else:
         state_mgr = StateManager(target_path)
         state = state_mgr.load() if state_mgr.exists() else None
-        detector = RepoDetector(target_path, state)
+        detector = RepoDetector(target_path, state, source_root=source_root)
 
     checker = ScorecardChecker(detector)
 
@@ -1153,6 +1344,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
 def cmd_status(args: argparse.Namespace) -> int:
     """Show migration status dashboard."""
     target_path = resolve_target(args.target)
+    source_root = getattr(args, "source_root", None)
     state_mgr = StateManager(target_path)
 
     if (target_path / REFERENCE_MARKER).is_dir():
@@ -1175,7 +1367,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         return 1
 
     state = state_mgr.load()
-    detector = RepoDetector(target_path, state)
+    detector = RepoDetector(target_path, state, source_root=source_root)
     checker = ScorecardChecker(detector)
     result = checker.run_all()
 
@@ -1232,10 +1424,11 @@ def cmd_init(args: argparse.Namespace) -> int:
 def cmd_guide(args: argparse.Namespace) -> int:
     """Interactive migration guide."""
     target_path = resolve_target(args.target)
+    source_root = getattr(args, "source_root", None)
     state_mgr = StateManager(target_path)
 
     state = state_mgr.load() if state_mgr.exists() else None
-    detector = RepoDetector(target_path, state)
+    detector = RepoDetector(target_path, state, source_root=source_root)
     checker = ScorecardChecker(detector)
     formatter = TerminalFormatter()
     guide = WorkflowGuide(detector, checker, state_mgr, formatter)
@@ -1250,11 +1443,12 @@ def cmd_guide(args: argparse.Namespace) -> int:
 def cmd_record(args: argparse.Namespace) -> int:
     """Record verify results to poc-data.yml."""
     target_path = resolve_target(args.target)
+    source_root = getattr(args, "source_root", None)
     poc_data_path = Path(args.poc_data) if args.poc_data else REPO_ROOT / "docs" / "presentations" / "poc-data.yml"
 
     state_mgr = StateManager(target_path)
     state = state_mgr.load() if state_mgr.exists() else None
-    detector = RepoDetector(target_path, state)
+    detector = RepoDetector(target_path, state, source_root=source_root)
     checker = ScorecardChecker(detector)
     result = checker.run_all()
 
@@ -1271,11 +1465,22 @@ def cmd_record(args: argparse.Namespace) -> int:
 
 # ─── Argument Parsing ───────────────────────────────────────────────────────
 
+def _add_common_target_args(parser: argparse.ArgumentParser) -> None:
+    """Add --target and --source-root flags shared across subcommands."""
+    parser.add_argument("--target", help="Path or git URL of target repo (default: current repo)")
+    parser.add_argument(
+        "--source-root",
+        help="Relative path to the module containing src/main/java/ (for multi-module repos, "
+             "e.g. 'billing-core' or 'modules/billing-service')",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="migration_cli",
         description="Migration CLI — Guided workflow + scorecard verification for OneFinancial.",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {CLI_VERSION}")
     subparsers = parser.add_subparsers(dest="command", help="Available subcommands")
 
     # verify
@@ -1284,13 +1489,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_verify.add_argument("--phase", type=int, help="Run checks for a single phase (1-5)")
     p_verify.add_argument("--json", action="store_true", help="Output JSON instead of terminal")
     p_verify.add_argument("--quiet", "-q", action="store_true", help="Single-line output for CI (e.g. PASS 13/13 100%%)")
-    p_verify.add_argument("--target", help="Path or git URL of target repo (default: current repo)")
+    _add_common_target_args(p_verify)
 
     # status
     p_status = subparsers.add_parser("status", help="Show migration status dashboard")
-    p_status.add_argument("--target", help="Path or git URL of target repo")
     p_status.add_argument("--json", action="store_true", help="Output JSON")
     p_status.add_argument("--quiet", "-q", action="store_true", help="Single-line output for CI")
+    _add_common_target_args(p_status)
 
     # init
     p_init = subparsers.add_parser("init", help="Initialize migration state")
@@ -1300,20 +1505,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_init.add_argument("--db-prefix", default="", help="DB table prefix (e.g., bs_)")
     p_init.add_argument("--property-prefix", default="", help="Spring property prefix")
     p_init.add_argument("--has-frontend", action="store_true", help="Service has an Angular frontend")
-    p_init.add_argument("--target", help="Path or git URL of target repo")
+    _add_common_target_args(p_init)
 
     # guide
     p_guide = subparsers.add_parser("guide", help="Interactive migration guide")
-    p_guide.add_argument("--target", help="Path or git URL of target repo")
     p_guide.add_argument("--phase", type=int, help="Jump to specific phase (0-5)")
     p_guide.add_argument("--skip-gate", action="store_true", help="Skip gate checks")
+    _add_common_target_args(p_guide)
 
     # record
     p_record = subparsers.add_parser("record", help="Record results to poc-data.yml")
     p_record.add_argument("--service-name", required=True, help="Service name for the record")
     p_record.add_argument("--poc-data", help="Path to poc-data.yml")
     p_record.add_argument("--dry-run", action="store_true", help="Print without saving")
-    p_record.add_argument("--target", help="Path or git URL of target repo")
+    _add_common_target_args(p_record)
 
     return parser
 
