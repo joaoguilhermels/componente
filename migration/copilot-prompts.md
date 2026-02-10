@@ -324,8 +324,8 @@ ALLOWED Spring imports in core (these are acceptable exceptions):
 
 **Validation**:
 ```bash
-# Must return zero results
-grep -n "import jakarta\.\|import org\.springframework\.data\.\|import org\.springframework\.web\." \
+# Must return zero results — checks all 7 forbidden packages
+grep -En "import (jakarta\.persistence|org\.springframework\.data|org\.springframework\.web|org\.springframework\.stereotype|org\.springframework\.boot|org\.springframework\.context|org\.springframework\.beans)\." \
   target/src/main/java/**/core/model/<DomainClass>.java
 ```
 
@@ -1245,6 +1245,9 @@ open the relevant files and report PASS or FAIL with evidence.
    - `org.springframework.data`
    - `org.springframework.web`
    - `org.springframework.stereotype`
+   - `org.springframework.boot`
+   - `org.springframework.context`
+   - `org.springframework.beans`
    ALLOWED exceptions: `org.springframework.transaction.annotation.Transactional` and `org.springframework.modulith.*`.
    Expected: zero forbidden imports.
 

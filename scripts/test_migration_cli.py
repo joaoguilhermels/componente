@@ -608,8 +608,78 @@ class TestCommentDetection:
         assert 2 in comment_lines
         assert 3 not in comment_lines
 
+    def test_string_literal_with_slash_star_not_comment(self):
+        """H2: /* inside a string literal should NOT trigger block comment mode."""
+        lines = ['String s = "/* not a comment */";', "@Bean"]
+        comment_lines = cli.ScorecardChecker._compute_comment_lines(lines)
+        assert 0 not in comment_lines, "String literal containing /* should not be a comment"
+        assert 1 not in comment_lines, "@Bean after string literal /* should not be a comment"
+
+    def test_string_literal_with_unclosed_slash_star_not_comment(self):
+        """H2: String s = "starts /*"; should NOT start a block comment."""
+        lines = ['String s = "starts /*";', "@Bean", "public Foo foo() {}"]
+        comment_lines = cli.ScorecardChecker._compute_comment_lines(lines)
+        assert 0 not in comment_lines, "String literal with /* should not be a comment"
+        assert 1 not in comment_lines, "@Bean after string /* should not be marked as comment"
+        assert 2 not in comment_lines
+
+    def test_real_midline_comment_after_code_and_string(self):
+        """H2: Code with string then real /* comment should still work."""
+        lines = ['System.out.println("hello"); /* real comment */', "@Bean"]
+        comment_lines = cli.ScorecardChecker._compute_comment_lines(lines)
+        # Line 0 has real code before /*, so not marked as comment (existing behavior)
+        assert 0 not in comment_lines
+        # /* and */ on same line, so block ends — @Bean is not a comment
+        assert 1 not in comment_lines
+
 
 # ─── COMB Per-Method Pairing Tests ──────────────────────────────────────────
+
+class TestEffectiveDistance:
+    """H3: Direct unit tests for _effective_distance boundary cases."""
+
+    def test_adjacent_lines_distance_1(self):
+        """Adjacent lines (no gap) should have effective distance 1."""
+        lines = ["@ConditionalOnMissingBean", "@Bean"]
+        comment_lines = set()
+        dist = cli.ScorecardChecker._effective_distance(0, 1, lines, comment_lines)
+        assert dist == 1
+
+    def test_all_comments_between_distance_1(self):
+        """Only comment lines between → effective distance 1 (comments are skipped)."""
+        lines = ["@ConditionalOnMissingBean", "// a comment", "/* block */", "@Bean"]
+        comment_lines = {1, 2}
+        dist = cli.ScorecardChecker._effective_distance(0, 3, lines, comment_lines)
+        assert dist == 1
+
+    def test_all_blanks_between_distance_1(self):
+        """Only blank lines between → effective distance 1 (blanks are skipped)."""
+        lines = ["@ConditionalOnMissingBean", "", "  ", "@Bean"]
+        comment_lines = set()
+        dist = cli.ScorecardChecker._effective_distance(0, 3, lines, comment_lines)
+        assert dist == 1
+
+    def test_mixed_code_between(self):
+        """Code lines between → counted in effective distance."""
+        lines = ["@ConditionalOnMissingBean", "@Deprecated", "// comment", "@Override", "@Bean"]
+        comment_lines = {2}
+        # Between indices 0 and 4: lines 1 (@Deprecated) and 3 (@Override) are code → count=2, distance=3
+        dist = cli.ScorecardChecker._effective_distance(0, 4, lines, comment_lines)
+        assert dist == 3
+
+    def test_reverse_order_same_result(self):
+        """Distance is symmetric — order of a and b shouldn't matter."""
+        lines = ["@ConditionalOnMissingBean", "@Bean"]
+        comment_lines = set()
+        assert cli.ScorecardChecker._effective_distance(1, 0, lines, comment_lines) == 1
+
+    def test_same_line_distance_1(self):
+        """Same line (a == b) → distance 1 (lo == hi, loop doesn't execute, returns 0+1)."""
+        lines = ["@ConditionalOnMissingBean"]
+        comment_lines = set()
+        dist = cli.ScorecardChecker._effective_distance(0, 0, lines, comment_lines)
+        assert dist == 1
+
 
 class TestCombPerMethodPairing:
     """Fix #2: @ConditionalOnMissingBean must be paired per @Bean method."""
@@ -1258,6 +1328,64 @@ class TestPackageDirCache:
         # Second call should return cached None without rglob
         result2 = checker._find_package_dir("nonexistent")
         assert result2 is None
+
+
+class TestFindPackageDirNonExistent:
+    """M1: _find_package_dir should not crash on non-existent java_main path."""
+
+    def test_nonexistent_java_main_returns_none(self, tmp_path):
+        """When java_main points to a non-existent directory, _find_package_dir returns None."""
+        state = cli.MigrationState(
+            service_name="Ghost", base_package="com.example.ghost",
+            db_prefix="", property_prefix="", tier="Standard",
+            has_frontend=False, current_phase=0, phase_times={}, errors_encountered=[],
+        )
+        # java_main will be tmp_path/src/main/java/com/example/ghost — which doesn't exist
+        detector = cli.RepoDetector(tmp_path, state)
+        assert not detector.java_main.exists()
+
+        checker = cli.ScorecardChecker(detector)
+        result = checker._find_package_dir("core")
+        assert result is None  # should not raise
+
+    def test_nonexistent_java_test_returns_none(self, tmp_path):
+        """When java_test points to a non-existent directory, _find_test_package_dir returns None."""
+        state = cli.MigrationState(
+            service_name="Ghost", base_package="com.example.ghost",
+            db_prefix="", property_prefix="", tier="Standard",
+            has_frontend=False, current_phase=0, phase_times={}, errors_encountered=[],
+        )
+        detector = cli.RepoDetector(tmp_path, state)
+        assert not detector.java_test.exists()
+
+        checker = cli.ScorecardChecker(detector)
+        result = checker._find_test_package_dir("core")
+        assert result is None  # should not raise
+
+
+class TestRunPhaseInvalidInput:
+    """M2: run_phase() should raise ValueError on invalid phase numbers."""
+
+    def test_invalid_phase_raises_value_error(self, tmp_repo):
+        tmp_path, _, _, _ = tmp_repo
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        with pytest.raises(ValueError, match="Invalid phase"):
+            checker.run_phase(99)
+
+    def test_phase_zero_raises_value_error(self, tmp_repo):
+        tmp_path, _, _, _ = tmp_repo
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        with pytest.raises(ValueError, match="Invalid phase"):
+            checker.run_phase(0)
+
+    def test_negative_phase_raises_value_error(self, tmp_repo):
+        tmp_path, _, _, _ = tmp_repo
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        with pytest.raises(ValueError, match="Invalid phase"):
+            checker.run_phase(-1)
 
 
 class TestSemanticPortChecks:

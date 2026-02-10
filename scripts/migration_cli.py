@@ -73,7 +73,7 @@ DIMENSIONS = {
     "port_interfaces":           {"phase": 2, "weight": 0.10, "label": "Port interfaces for external access"},
     "domain_test_coverage":      {"phase": 2, "weight": 0.10, "label": "Domain unit tests exist (coverage requires JaCoCo)"},
     "bridge_configs":            {"phase": 3, "weight": 0.05, "label": "Bridge configs on all adapters"},
-    "adapter_integration_tests": {"phase": 3, "weight": 0.10, "label": "Adapter integration tests"},
+    "adapter_integration_tests": {"phase": 3, "weight": 0.10, "label": "Adapter tests exist"},
     "conditional_on_missing_bean": {"phase": 4, "weight": 0.05, "label": "@ConditionalOnMissingBean coverage"},
     "feature_flags_default":     {"phase": 4, "weight": 0.05, "label": "Feature flags default to off"},
     "auto_config_meta_inf":      {"phase": 4, "weight": 0.05, "label": "Auto-config registered in META-INF"},
@@ -354,6 +354,10 @@ class ScorecardChecker:
 
     def run_phase(self, phase_num: int) -> VerifyResult:
         """Run checks for a single phase."""
+        if phase_num not in PHASES:
+            raise ValueError(
+                f"Invalid phase: {phase_num}. Must be one of {sorted(PHASES.keys())}."
+            )
         phase_info = PHASES[phase_num]
         dims = {k: v for k, v in DIMENSIONS.items() if v["phase"] == phase_num}
         checks = []
@@ -798,7 +802,15 @@ class ScorecardChecker:
 
     @staticmethod
     def _compute_comment_lines(lines: list[str]) -> set[int]:
-        """Precompute set of line indices inside comments. Single O(n) pass."""
+        """Precompute set of line indices inside comments. Single O(n) pass.
+
+        Known Limitations:
+            This is a heuristic, not a full Java parser.  Deeply nested
+            combinations of string literals and comments (e.g., escaped quotes
+            inside strings containing block-comment delimiters) are not handled.
+            Such patterns are extremely rare in real-world Java code and would
+            require a full AST to resolve correctly.
+        """
         comment_lines: set[int] = set()
         in_block = False
         for i, line in enumerate(lines):
@@ -821,6 +833,15 @@ class ScorecardChecker:
                     in_block = False
             elif "/*" in stripped:
                 # Mid-line block comment (e.g., `@Bean /* comment */`).
+                # Before entering block mode, check if /* is inside a string
+                # literal.  Heuristic: count unescaped " chars before the first
+                # /*.  Odd count means we're inside a string → skip.
+                slash_star_pos = stripped.find("/*")
+                before = stripped[:slash_star_pos]
+                quote_count = before.count('"') - before.count('\\"')
+                if quote_count % 2 == 1:
+                    # /* appears inside a string literal — not a real comment.
+                    continue
                 # Don't mark this line — it contains real code before the comment.
                 in_block = True
                 if "*/" in stripped:
@@ -972,25 +993,37 @@ class ScorecardChecker:
     # ── Helpers ──
 
     def _find_package_dir(self, package_name: str) -> Optional[Path]:
-        """Find a package directory under java_main (shallowest match, cached)."""
+        """Find a package directory under java_main (shallowest match, cached).
+
+        Returns None (without raising) when java_main does not exist on disk.
+        """
         if package_name in self._pkg_cache:
             return self._pkg_cache[package_name]
-        candidates = sorted(
-            (c for c in self.d.java_main.rglob(package_name) if c.is_dir() and c.name == package_name),
-            key=lambda p: len(p.parts),
-        )
+        try:
+            candidates = sorted(
+                (c for c in self.d.java_main.rglob(package_name) if c.is_dir() and c.name == package_name),
+                key=lambda p: len(p.parts),
+            )
+        except (FileNotFoundError, OSError):
+            candidates = []
         result = candidates[0] if candidates else None
         self._pkg_cache[package_name] = result
         return result
 
     def _find_test_package_dir(self, package_name: str) -> Optional[Path]:
-        """Find a package directory under java_test (shallowest match, cached)."""
+        """Find a package directory under java_test (shallowest match, cached).
+
+        Returns None (without raising) when java_test does not exist on disk.
+        """
         if package_name in self._test_pkg_cache:
             return self._test_pkg_cache[package_name]
-        candidates = sorted(
-            (c for c in self.d.java_test.rglob(package_name) if c.is_dir() and c.name == package_name),
-            key=lambda p: len(p.parts),
-        )
+        try:
+            candidates = sorted(
+                (c for c in self.d.java_test.rglob(package_name) if c.is_dir() and c.name == package_name),
+                key=lambda p: len(p.parts),
+            )
+        except (FileNotFoundError, OSError):
+            candidates = []
         result = candidates[0] if candidates else None
         self._test_pkg_cache[package_name] = result
         return result
