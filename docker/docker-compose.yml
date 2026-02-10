@@ -73,6 +73,7 @@ services:
     image: python:3.12-alpine
     volumes:
       - ../:/workspace
+      - pip-cache:/root/.cache/pip
     working_dir: /workspace
     command: ["python3", "--version"]
 
@@ -80,3 +81,4 @@ volumes:
   postgres-data:
   maven-cache:
   node-cache:
+  pip-cache:

@@ -1198,6 +1198,24 @@ class WorkflowGuide:
             else:
                 print(f"\n{RED}{BOLD}Gate FAILED.{RESET} Fix failing checks before advancing.")
         else:
+            # Prerequisite warning when skipping ahead
+            if phase > state.current_phase:
+                unverified_start = max(state.current_phase, 1)
+                unverified_end = phase - 1
+                if unverified_start <= unverified_end:
+                    if unverified_start == unverified_end:
+                        phases_str = f"Phase {unverified_start}"
+                        verb = "has"
+                    else:
+                        phases_str = f"Phases {unverified_start}-{unverified_end}"
+                        verb = "have"
+                    print(
+                        f"\n{YELLOW}{BOLD}WARNING:{RESET}{YELLOW} Skipping gate for Phase {phase}. "
+                        f"{phases_str} {verb} NOT been verified.{RESET}"
+                    )
+                    print(
+                        f"         Use 'verify --phase {unverified_start}' to check prerequisites first.\n"
+                    )
             print(f"{DIM}(Gate check skipped with --skip-gate){RESET}\n")
             # Record that gate was skipped (audit trail)
             now = datetime.now(timezone.utc).isoformat()

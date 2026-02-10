@@ -1219,6 +1219,38 @@ class TestCmdGuide:
         assert "Phase 0" in output
         assert "TestSvc" in output
 
+    def test_skip_gate_warns_when_prerequisites_unmet(self, tmp_path, capsys):
+        """Finding #10: --skip-gate warns when previous phases haven't been verified."""
+        state_mgr = cli.StateManager(tmp_path)
+        state_mgr.create(service_name="WarnTest", tier="Standard")
+        state = state_mgr.load()
+        state.current_phase = 1
+        state_mgr.save(state)
+
+        parser = cli.build_parser()
+        args = parser.parse_args(["guide", "--target", str(tmp_path), "--phase", "3", "--skip-gate"])
+        exit_code = cli.cmd_guide(args)
+        assert exit_code == 0
+        output = capsys.readouterr().out
+        assert "WARNING" in output
+        assert "Phases 1-2" in output
+        assert "verify --phase 1" in output
+
+    def test_skip_gate_no_warning_when_at_expected_phase(self, tmp_path, capsys):
+        """No warning when --skip-gate is used for the current expected phase."""
+        state_mgr = cli.StateManager(tmp_path)
+        state_mgr.create(service_name="NoWarnTest", tier="Standard")
+        state = state_mgr.load()
+        state.current_phase = 2
+        state_mgr.save(state)
+
+        parser = cli.build_parser()
+        args = parser.parse_args(["guide", "--target", str(tmp_path), "--phase", "2", "--skip-gate"])
+        exit_code = cli.cmd_guide(args)
+        assert exit_code == 0
+        output = capsys.readouterr().out
+        assert "WARNING" not in output
+
     def test_guide_skip_gate_records_in_state(self, tmp_path, capsys):
         """--skip-gate should record that the gate was bypassed (audit trail)."""
         state_mgr = cli.StateManager(tmp_path)
