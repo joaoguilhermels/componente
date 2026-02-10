@@ -79,15 +79,22 @@ DIMENSIONS = {
     "angular_standalone_onpush": {"phase": 5, "weight": 0.05, "label": "Angular standalone + OnPush"},
 }
 
-# ANSI color codes
-BOLD = "\033[1m"
-DIM = "\033[2m"
-GREEN = "\033[32m"
-RED = "\033[31m"
-YELLOW = "\033[33m"
-CYAN = "\033[36m"
-WHITE = "\033[97m"
-RESET = "\033[0m"
+# Validate weights at import time (prevents silent scoring bugs from future edits)
+assert abs(sum(d["weight"] for d in DIMENSIONS.values()) - 1.0) < 0.001, \
+    f"Dimension weights must sum to 1.0, got {sum(d['weight'] for d in DIMENSIONS.values())}"
+assert abs(sum(p["weight"] for p in PHASES.values()) - 1.0) < 0.001, \
+    f"Phase weights must sum to 1.0, got {sum(p['weight'] for p in PHASES.values())}"
+
+# ANSI color codes (disabled when stdout is not a TTY or NO_COLOR is set)
+_USE_COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+BOLD = "\033[1m" if _USE_COLOR else ""
+DIM = "\033[2m" if _USE_COLOR else ""
+GREEN = "\033[32m" if _USE_COLOR else ""
+RED = "\033[31m" if _USE_COLOR else ""
+YELLOW = "\033[33m" if _USE_COLOR else ""
+CYAN = "\033[36m" if _USE_COLOR else ""
+WHITE = "\033[97m" if _USE_COLOR else ""
+RESET = "\033[0m" if _USE_COLOR else ""
 
 # Prompt references for the guide subcommand
 PHASE_PROMPTS = {
@@ -201,16 +208,27 @@ class RepoDetector:
         return self.target.name
 
     @property
+    def _base_package_path(self) -> str:
+        """Convert base_package to path segments (e.g. 'com.acme.billing' -> 'com/acme/billing')."""
+        if self.state and self.state.base_package:
+            return self.state.base_package.replace(".", os.sep)
+        return ""
+
+    @property
     def java_main(self) -> Path:
         if self._is_reference:
             return self.target / REFERENCE_MARKER / "src" / "main" / "java" / "com" / "onefinancial" / "customer"
-        return self.target / "src" / "main" / "java"
+        base = self.target / "src" / "main" / "java"
+        pkg_path = self._base_package_path
+        return base / pkg_path if pkg_path else base
 
     @property
     def java_test(self) -> Path:
         if self._is_reference:
             return self.target / REFERENCE_MARKER / "src" / "test" / "java" / "com" / "onefinancial" / "customer"
-        return self.target / "src" / "test" / "java"
+        base = self.target / "src" / "test" / "java"
+        pkg_path = self._base_package_path
+        return base / pkg_path if pkg_path else base
 
     @property
     def resources(self) -> Path:
@@ -390,6 +408,9 @@ class ScorecardChecker:
                 if not stripped.startswith("import "):
                     continue
                 import_statement = stripped[7:].rstrip(";").strip()
+                # Handle "import static org.foo.Bar.baz" → "org.foo.Bar.baz"
+                if import_statement.startswith("static "):
+                    import_statement = import_statement[7:]
                 if self._is_forbidden_import(import_statement):
                     rel_path = java_file.relative_to(self.d.java_main)
                     violations.append(f"{rel_path}:{line_num} -> {import_statement}")
@@ -526,24 +547,40 @@ class ScorecardChecker:
                 files_to_scan.extend(pkg_dir.glob("*Configuration.java"))
 
         total_beans = 0
-        total_conditional = 0
+        beans_without_comb = []
         for java_file in files_to_scan:
             try:
                 content = java_file.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
                 continue
             lines = content.splitlines()
+            # Collect all @Bean and @ConditionalOnMissingBean line indices
+            bean_indices = []
+            comb_indices = []
             for i, line in enumerate(lines):
-                if bean_pattern.match(line):
-                    if self._is_in_comment(lines, i):
-                        continue
-                    total_beans += 1
-                if comb_pattern.match(line):
-                    if not self._is_in_comment(lines, i):
-                        total_conditional += 1
+                if bean_pattern.match(line) and not self._is_in_comment(lines, i):
+                    bean_indices.append(i)
+                if comb_pattern.match(line) and not self._is_in_comment(lines, i):
+                    comb_indices.append(i)
 
-        passed = total_beans > 0 and total_beans == total_conditional
-        detail = f"{total_conditional}/{total_beans} @Bean methods have @ConditionalOnMissingBean"
+            # Greedily pair each @Bean with nearest unused @COMB within ±2 lines
+            used_combs = set()
+            for bean_idx in bean_indices:
+                total_beans += 1
+                candidates = sorted(
+                    (c for c in comb_indices if c not in used_combs and abs(c - bean_idx) <= 2),
+                    key=lambda c: abs(c - bean_idx),
+                )
+                if candidates:
+                    used_combs.add(candidates[0])
+                else:
+                    beans_without_comb.append(f"{java_file.name}:{bean_idx + 1}")
+
+        matched = total_beans - len(beans_without_comb)
+        passed = total_beans > 0 and len(beans_without_comb) == 0
+        detail = f"{matched}/{total_beans} @Bean methods have @ConditionalOnMissingBean"
+        if beans_without_comb:
+            detail += f" — missing: {', '.join(beans_without_comb[:3])}"
         return CheckResult(
             dimension="conditional_on_missing_bean", passed=passed, detail=detail,
             weight=dim["weight"], phase=dim["phase"], label=dim["label"],
@@ -551,10 +588,15 @@ class ScorecardChecker:
 
     @staticmethod
     def _is_in_comment(lines: list[str], line_idx: int) -> bool:
-        """Simple heuristic: check if line is inside a block comment."""
+        """Check if a line is inside a block comment or is a line comment."""
+        target = lines[line_idx].strip()
+        # Line comment (// at start) or Javadoc continuation (* at start)
+        if target.startswith("//") or (target.startswith("*") and not target.startswith("*/")):
+            return True
+        # Block comment tracking up to this line
         in_block = False
         for i in range(line_idx + 1):
-            line = lines[i].strip()
+            line = lines[i]
             if "/*" in line:
                 in_block = True
             if "*/" in line:
@@ -562,21 +604,35 @@ class ScorecardChecker:
         return in_block
 
     def check_feature_flags_default(self) -> CheckResult:
-        """Verify zero occurrences of matchIfMissing = true."""
+        """Verify zero occurrences of matchIfMissing = true (outside comments)."""
         dim = DIMENSIONS["feature_flags_default"]
         violations = 0
         files_with_violations = []
+        match_re = re.compile(r"matchIfMissing\s*=\s*true")
 
         for java_file in self.d.java_main.rglob("*.java"):
             try:
                 content = java_file.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
                 continue
-            if "matchIfMissing" in content and "true" in content:
-                # More precise check
-                if re.search(r"matchIfMissing\s*=\s*true", content):
+            # Fast path: skip files that don't mention matchIfMissing at all
+            if "matchIfMissing" not in content:
+                continue
+            # Line-by-line scan, skipping comment lines
+            in_block = False
+            for line in content.splitlines():
+                stripped = line.strip()
+                if "/*" in stripped:
+                    in_block = True
+                if "*/" in stripped:
+                    in_block = False
+                    continue
+                if in_block or stripped.startswith("//") or stripped.startswith("*"):
+                    continue
+                if match_re.search(stripped):
                     violations += 1
                     files_with_violations.append(java_file.name)
+                    break
 
         passed = violations == 0
         if passed:
@@ -656,13 +712,14 @@ class ScorecardChecker:
         standalone_count = 0
         onpush_count = 0
         total = len(component_files)
+        standalone_re = re.compile(r"standalone\s*:\s*true")
 
         for ts_file in component_files:
             try:
                 content = ts_file.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
                 continue
-            if "standalone: true" in content or "standalone:true" in content:
+            if standalone_re.search(content):
                 standalone_count += 1
             if "OnPush" in content:
                 onpush_count += 1
@@ -866,7 +923,9 @@ class ResultsRecorder:
         for phase_result in result.phases:
             scores[f"phase_{phase_result.phase}"] = round(phase_result.score)
 
-        # Determine phase reached
+        # Determine phase reached (sequential gate: highest consecutive passing phase).
+        # If Phase 1 passes but Phase 2 fails, phase_reached = 1 even if Phase 3 passes.
+        # This reflects the architecture rule that phases are sequential gates.
         phase_reached = 0
         for phase_result in sorted(result.phases, key=lambda p: p.phase):
             if phase_result.all_passed:
@@ -1007,8 +1066,22 @@ def _repo_name_from_url(url: str) -> str:
     return name or "target"
 
 
+def _check_git_available() -> None:
+    """Verify git is installed and accessible. Exit with clear error if not."""
+    try:
+        subprocess.run(["git", "--version"], check=True, capture_output=True)
+    except FileNotFoundError:
+        print(f"{RED}Error: 'git' is not installed or not on PATH.{RESET}", file=sys.stderr)
+        print("  The --target flag with a URL requires git for cloning.", file=sys.stderr)
+        print("  Options:", file=sys.stderr)
+        print("    1. Clone the repo manually and pass the local path instead.", file=sys.stderr)
+        print("    2. Install git (e.g., apk add git in Alpine containers).", file=sys.stderr)
+        sys.exit(1)
+
+
 def _clone_or_pull(url: str, dest: Path) -> Path:
     """Clone a repo or pull if it already exists. Returns the repo path."""
+    _check_git_available()
     if dest.is_dir() and (dest / ".git").is_dir():
         print(f"{CYAN}Updating existing clone: {dest.name}{RESET}")
         subprocess.run(
@@ -1068,6 +1141,9 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
     if args.json:
         print(JsonFormatter.format_result(result))
+    elif getattr(args, "quiet", False):
+        status = "PASS" if result.all_passed else "FAIL"
+        print(f"{status} {result.passing_dimensions}/{result.total_dimensions} {result.overall_score:.0f}%")
     else:
         TerminalFormatter().print_result(result)
 
@@ -1086,6 +1162,9 @@ def cmd_status(args: argparse.Namespace) -> int:
         result = checker.run_all()
         if args.json:
             print(JsonFormatter.format_result(result))
+        elif getattr(args, "quiet", False):
+            status = "PASS" if result.all_passed else "FAIL"
+            print(f"{status} {result.passing_dimensions}/{result.total_dimensions} {result.overall_score:.0f}%")
         else:
             TerminalFormatter().print_result(result)
         return 0 if result.all_passed else 1
@@ -1108,6 +1187,10 @@ def cmd_status(args: argparse.Namespace) -> int:
             "scorecard": json.loads(JsonFormatter.format_result(result)),
         }
         print(json.dumps(status_data, indent=2))
+    elif getattr(args, "quiet", False):
+        status_word = "PASS" if result.all_passed else "FAIL"
+        print(f"{state.service_name} Phase {state.current_phase} "
+              f"{status_word} {result.passing_dimensions}/{result.total_dimensions} {result.overall_score:.0f}%")
     else:
         print(f"\n{BOLD}{CYAN}Migration Status: {state.service_name}{RESET}")
         print(f"  Tier: {state.tier}")
@@ -1200,12 +1283,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_verify.add_argument("--self-test", action="store_true", help="Run against reference repo")
     p_verify.add_argument("--phase", type=int, help="Run checks for a single phase (1-5)")
     p_verify.add_argument("--json", action="store_true", help="Output JSON instead of terminal")
+    p_verify.add_argument("--quiet", "-q", action="store_true", help="Single-line output for CI (e.g. PASS 13/13 100%%)")
     p_verify.add_argument("--target", help="Path or git URL of target repo (default: current repo)")
 
     # status
     p_status = subparsers.add_parser("status", help="Show migration status dashboard")
     p_status.add_argument("--target", help="Path or git URL of target repo")
     p_status.add_argument("--json", action="store_true", help="Output JSON")
+    p_status.add_argument("--quiet", "-q", action="store_true", help="Single-line output for CI")
 
     # init
     p_init = subparsers.add_parser("init", help="Initialize migration state")

@@ -158,30 +158,49 @@ class TestResolveTarget:
 # ─── clone_or_pull Tests ───────────────────────────────────────────────────
 
 class TestCloneOrPull:
+    @patch("migration_cli._check_git_available")
     @patch("subprocess.run")
-    def test_clone_when_no_existing_dir(self, mock_run, tmp_path):
+    def test_clone_when_no_existing_dir(self, mock_run, mock_git_check, tmp_path):
         dest = tmp_path / "new-repo"
         result = cli._clone_or_pull("https://github.com/org/repo.git", dest)
 
+        mock_git_check.assert_called_once()
         mock_run.assert_called_once_with(
             ["git", "clone", "https://github.com/org/repo.git", str(dest)],
             check=True,
         )
         assert result == dest
 
+    @patch("migration_cli._check_git_available")
     @patch("subprocess.run")
-    def test_pull_when_existing_git_dir(self, mock_run, tmp_path):
+    def test_pull_when_existing_git_dir(self, mock_run, mock_git_check, tmp_path):
         dest = tmp_path / "existing-repo"
         dest.mkdir()
         (dest / ".git").mkdir()
 
         result = cli._clone_or_pull("https://github.com/org/repo.git", dest)
 
+        mock_git_check.assert_called_once()
         mock_run.assert_called_once_with(
             ["git", "-C", str(dest), "pull", "--ff-only"],
             check=False,
         )
         assert result == dest
+
+
+# ─── Git Availability Tests ───────────────────────────────────────────────
+
+class TestCheckGitAvailable:
+    @patch("subprocess.run")
+    def test_git_available_does_not_exit(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        cli._check_git_available()  # should not raise
+
+    @patch("subprocess.run", side_effect=FileNotFoundError)
+    def test_git_not_available_exits(self, mock_run):
+        with pytest.raises(SystemExit) as exc_info:
+            cli._check_git_available()
+        assert exc_info.value.code == 1
 
 
 # ─── RepoDetector Tests ────────────────────────────────────────────────────
@@ -223,6 +242,27 @@ class TestRepoDetector:
     def test_external_repo_name_fallback_to_dirname(self, tmp_path):
         detector = cli.RepoDetector(tmp_path)
         assert detector.repo_name == tmp_path.name
+
+    def test_base_package_narrows_java_main(self, tmp_path):
+        """Fix #3/#7: base_package should narrow java_main path for external repos."""
+        state = cli.MigrationState(
+            service_name="BillingService", base_package="com.acme.billing",
+            db_prefix="", property_prefix="", tier="Standard",
+            has_frontend=False, current_phase=0, phase_times={}, errors_encountered=[],
+        )
+        detector = cli.RepoDetector(tmp_path, state)
+        assert str(detector.java_main).endswith(os.path.join("com", "acme", "billing"))
+        assert str(detector.java_test).endswith(os.path.join("com", "acme", "billing"))
+
+    def test_empty_base_package_uses_full_tree(self, tmp_path):
+        """Without base_package, java_main is src/main/java/ (full tree)."""
+        state = cli.MigrationState(
+            service_name="Svc", base_package="", db_prefix="", property_prefix="",
+            tier="Standard", has_frontend=False, current_phase=0,
+            phase_times={}, errors_encountered=[],
+        )
+        detector = cli.RepoDetector(tmp_path, state)
+        assert str(detector.java_main).endswith(os.path.join("src", "main", "java"))
 
 
 # ─── ScorecardChecker: Reference Repo Self-Tests ───────────────────────────
@@ -391,6 +431,24 @@ class TestCheckerFailures:
         result = checker.check_core_isolation()
         assert result.passed
 
+    def test_static_import_forbidden_detected(self, tmp_repo):
+        """Fix #4: import static of forbidden packages must be caught."""
+        tmp_path, java_root, _, _ = tmp_repo
+        core_class = java_root / "core" / "StaticImportService.java"
+        core_class.write_text(textwrap.dedent("""\
+            package com.example.svc.core;
+
+            import static org.springframework.boot.test.Foo.bar;
+
+            public class StaticImportService {}
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_core_isolation()
+        assert not result.passed
+        assert "org.springframework.boot" in result.detail
+
     def test_no_port_interfaces_fails(self, tmp_repo):
         tmp_path, java_root, _, _ = tmp_repo
         # port/ exists but is empty
@@ -419,6 +477,22 @@ class TestCheckerFailures:
         result = checker.check_feature_flags_default()
         assert not result.passed
 
+    def test_match_if_missing_in_comment_not_flagged(self, tmp_repo):
+        """Fix #6: matchIfMissing = true inside comments should be ignored."""
+        tmp_path, java_root, _, _ = tmp_repo
+        good_config = java_root / "autoconfigure" / "CommentConfig.java"
+        good_config.write_text(textwrap.dedent("""\
+            // Note: matchIfMissing = true is forbidden
+            /* Do not use matchIfMissing = true */
+            @ConditionalOnProperty(name = "foo")
+            public class CommentConfig {}
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_feature_flags_default()
+        assert result.passed
+
     def test_no_meta_inf_fails(self, tmp_repo):
         tmp_path, _, _, _ = tmp_repo
         detector = cli.RepoDetector(tmp_path)
@@ -433,6 +507,123 @@ class TestCheckerFailures:
         result = checker.check_angular_standalone_onpush()
         assert result.passed
         assert "N/A" in result.detail
+
+    def test_standalone_with_spaces_detected(self, tmp_path):
+        """Fix #5: standalone : true (with extra spaces) should be detected."""
+        fe_dir = tmp_path / "frontend" / "src"
+        fe_dir.mkdir(parents=True)
+        comp = fe_dir / "my.component.ts"
+        comp.write_text(textwrap.dedent("""\
+            @Component({
+              standalone :  true,
+              changeDetection: ChangeDetectionStrategy.OnPush,
+            })
+            export class MyComponent {}
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_angular_standalone_onpush()
+        assert result.passed
+        assert "1/1 standalone" in result.detail
+
+
+# ─── Comment Detection Tests ─────────────────────────────────────────────────
+
+class TestIsInComment:
+    """Fix #1: Verify _is_in_comment detects // and block comments."""
+
+    def test_line_comment_detected(self):
+        lines = ["// @Bean", "public class Foo {}"]
+        assert cli.ScorecardChecker._is_in_comment(lines, 0) is True
+
+    def test_javadoc_continuation_detected(self):
+        lines = ["/**", " * @Bean annotation", " */"]
+        assert cli.ScorecardChecker._is_in_comment(lines, 1) is True
+
+    def test_regular_code_not_comment(self):
+        lines = ["@Bean", "public Foo foo() {}"]
+        assert cli.ScorecardChecker._is_in_comment(lines, 0) is False
+
+    def test_block_comment_detected(self):
+        lines = ["/*", "@Bean", "*/"]
+        assert cli.ScorecardChecker._is_in_comment(lines, 1) is True
+
+    def test_after_block_comment_not_detected(self):
+        lines = ["/* comment */", "@Bean"]
+        assert cli.ScorecardChecker._is_in_comment(lines, 1) is False
+
+
+# ─── COMB Per-Method Pairing Tests ──────────────────────────────────────────
+
+class TestCombPerMethodPairing:
+    """Fix #2: @ConditionalOnMissingBean must be paired per @Bean method."""
+
+    def test_uneven_distribution_detected(self, tmp_repo):
+        """File A has 2 @Bean with 1 COMB, File B has 1 @Bean with 2 COMB. Global sum 3==3 but A is missing one."""
+        tmp_path, java_root, _, _ = tmp_repo
+        # File A: 2 beans, only 1 COMB
+        file_a = java_root / "autoconfigure" / "CoreAutoConfiguration.java"
+        file_a.write_text(textwrap.dedent("""\
+            public class CoreAutoConfiguration {
+                @Bean
+                @ConditionalOnMissingBean
+                public Foo foo() { return new Foo(); }
+
+                @Bean
+                public Bar bar() { return new Bar(); }
+            }
+        """))
+        # File B: 1 bean, but 2 COMB annotations (one above @Bean, one stray)
+        file_b = java_root / "rest" / "RestConfiguration.java"
+        file_b.write_text(textwrap.dedent("""\
+            public class RestConfiguration {
+                @ConditionalOnMissingBean
+                @Bean
+                public Baz baz() { return new Baz(); }
+            }
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_conditional_on_missing_bean()
+        # Should FAIL: bar() in File A lacks COMB
+        assert not result.passed
+        assert "2/3" in result.detail  # 2 out of 3 beans have COMB
+
+    def test_comb_after_bean_still_detected(self, tmp_repo):
+        """@Bean followed by @ConditionalOnMissingBean (reference repo pattern)."""
+        tmp_path, java_root, _, _ = tmp_repo
+        config = java_root / "autoconfigure" / "CoreAutoConfiguration.java"
+        config.write_text(textwrap.dedent("""\
+            public class CoreAutoConfiguration {
+                @Bean
+                @ConditionalOnMissingBean
+                public Foo foo() { return new Foo(); }
+            }
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_conditional_on_missing_bean()
+        assert result.passed
+
+    def test_comb_before_bean_still_detected(self, tmp_repo):
+        """@ConditionalOnMissingBean before @Bean also valid."""
+        tmp_path, java_root, _, _ = tmp_repo
+        config = java_root / "persistence" / "PersistenceConfiguration.java"
+        config.write_text(textwrap.dedent("""\
+            public class PersistenceConfiguration {
+                @ConditionalOnMissingBean
+                @Bean
+                public Repo repo() { return new Repo(); }
+            }
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_conditional_on_missing_bean()
+        assert result.passed
 
 
 # ─── Core Isolation Boundary Rules ──────────────────────────────────────────
@@ -626,6 +817,11 @@ class TestArgParsing:
         assert args.phase == 2
         assert args.json is True
 
+    def test_verify_quiet_flag(self):
+        parser = cli.build_parser()
+        args = parser.parse_args(["verify", "--quiet"])
+        assert args.quiet is True
+
     def test_verify_with_url_target(self):
         parser = cli.build_parser()
         args = parser.parse_args(["verify", "--target", "https://github.com/org/repo.git"])
@@ -675,3 +871,133 @@ class TestCmdVerify:
         data = json.loads(capsys.readouterr().out)
         assert len(data["phases"]) == 1
         assert data["phases"][0]["phase"] == 3
+
+    def test_quiet_output(self, capsys):
+        """Fix #12: --quiet outputs a single CI-friendly line."""
+        parser = cli.build_parser()
+        args = parser.parse_args(["verify", "--self-test", "--quiet"])
+        exit_code = cli.cmd_verify(args)
+        assert exit_code == 0
+        output = capsys.readouterr().out.strip()
+        assert output == "PASS 13/13 100%"
+
+
+# ─── End-to-End: cmd_status ──────────────────────────────────────────────────
+
+class TestCmdStatus:
+    def test_status_self_test_returns_zero(self):
+        parser = cli.build_parser()
+        args = parser.parse_args(["status"])
+        exit_code = cli.cmd_status(args)
+        assert exit_code == 0
+
+    def test_status_json_output(self, capsys):
+        parser = cli.build_parser()
+        args = parser.parse_args(["status", "--json"])
+        exit_code = cli.cmd_status(args)
+        assert exit_code == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["all_passed"] is True
+
+    def test_status_quiet_output(self, capsys):
+        parser = cli.build_parser()
+        args = parser.parse_args(["status", "--quiet"])
+        exit_code = cli.cmd_status(args)
+        assert exit_code == 0
+        output = capsys.readouterr().out.strip()
+        assert "PASS" in output
+        assert "13/13" in output
+
+    def test_status_no_state_on_external_fails(self, tmp_path):
+        parser = cli.build_parser()
+        args = parser.parse_args(["status", "--target", str(tmp_path)])
+        exit_code = cli.cmd_status(args)
+        assert exit_code == 1
+
+
+# ─── End-to-End: cmd_guide ───────────────────────────────────────────────────
+
+class TestCmdGuide:
+    def test_guide_self_test_runs_verify(self, capsys):
+        """Guide on reference repo runs scorecard in self-test mode."""
+        parser = cli.build_parser()
+        args = parser.parse_args(["guide"])
+        exit_code = cli.cmd_guide(args)
+        assert exit_code == 0
+        output = capsys.readouterr().out
+        assert "SCORECARD" in output or "self-test" in output.lower()
+
+    def test_guide_no_state_on_external_fails(self, tmp_path):
+        parser = cli.build_parser()
+        args = parser.parse_args(["guide", "--target", str(tmp_path)])
+        with pytest.raises(SystemExit):
+            cli.cmd_guide(args)
+
+    def test_guide_with_state_phase_zero(self, tmp_path, capsys):
+        """Guide with initialized state at phase 0 shows setup info."""
+        state_mgr = cli.StateManager(tmp_path)
+        state_mgr.create(service_name="TestSvc", tier="Standard")
+
+        parser = cli.build_parser()
+        args = parser.parse_args(["guide", "--target", str(tmp_path)])
+        exit_code = cli.cmd_guide(args)
+        assert exit_code == 0
+        output = capsys.readouterr().out
+        assert "Phase 0" in output
+        assert "TestSvc" in output
+
+
+# ─── End-to-End: cmd_init ────────────────────────────────────────────────────
+
+class TestCmdInit:
+    def test_init_creates_state(self, tmp_path):
+        parser = cli.build_parser()
+        args = parser.parse_args([
+            "init", "--service-name", "NewSvc", "--tier", "Standard",
+            "--target", str(tmp_path),
+        ])
+        exit_code = cli.cmd_init(args)
+        assert exit_code == 0
+        assert (tmp_path / ".migration" / "state.yml").is_file()
+
+    def test_init_rejects_duplicate(self, tmp_path):
+        state_mgr = cli.StateManager(tmp_path)
+        state_mgr.create(service_name="Existing", tier="Simple")
+
+        parser = cli.build_parser()
+        args = parser.parse_args([
+            "init", "--service-name", "Dup", "--tier", "Standard",
+            "--target", str(tmp_path),
+        ])
+        exit_code = cli.cmd_init(args)
+        assert exit_code == 1
+
+
+# ─── End-to-End: cmd_record ──────────────────────────────────────────────────
+
+class TestCmdRecord:
+    def test_record_self_test_creates_entry(self, tmp_path):
+        poc_file = tmp_path / "poc-data.yml"
+        parser = cli.build_parser()
+        args = parser.parse_args([
+            "record", "--service-name", "RefRepo", "--poc-data", str(poc_file),
+        ])
+        exit_code = cli.cmd_record(args)
+        assert exit_code == 0
+        assert poc_file.is_file()
+
+        import yaml
+        with open(poc_file) as f:
+            data = yaml.safe_load(f)
+        assert data["services"][0]["name"] == "RefRepo"
+        assert data["services"][0]["attempts"][0]["attempt"] == 1
+
+    def test_record_dry_run(self, tmp_path, capsys):
+        poc_file = tmp_path / "poc-data.yml"
+        parser = cli.build_parser()
+        args = parser.parse_args([
+            "record", "--service-name", "DryRun", "--poc-data", str(poc_file), "--dry-run",
+        ])
+        exit_code = cli.cmd_record(args)
+        assert exit_code == 0
+        assert not poc_file.exists()
