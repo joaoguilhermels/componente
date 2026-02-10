@@ -1,4 +1,4 @@
-.PHONY: build test verify clean build-java build-angular test-java test-java-unit test-java-integration test-angular up down install-angular update-presentation
+.PHONY: build test verify clean build-java build-angular test-java test-java-unit test-java-integration test-angular up down install-angular update-presentation migration-verify migration-verify-full migration-status migration-guide migration-init migration-record test-migration
 
 DOCKER_COMPOSE = docker compose -f docker/docker-compose.yml
 JAVA_RUN = $(DOCKER_COMPOSE) run --rm --no-deps java-build
@@ -73,3 +73,28 @@ security-scan:
 
 update-presentation:
 	$(PYTHON_RUN) sh -c "pip install --quiet --no-cache-dir pyyaml && python3 scripts/update_presentation.py"
+
+# ─── Migration CLI ──────────────────────────────────────────────────────
+
+migration-verify:
+	$(PYTHON_RUN) sh -c "pip install --quiet --no-cache-dir pyyaml && python3 scripts/migration_cli.py verify --self-test"
+
+migration-verify-full: migration-verify
+	@echo "── Full: Docker-based architecture tests ──"
+	$(JAVA_RUN) mvn test -Dtest='ModulithStructureTest' -Dsurefire.failIfNoSpecifiedTests=false -pl customer-registry-starter
+	$(JAVA_RUN) mvn test -Dtest='ArchitectureRulesTest' -Dsurefire.failIfNoSpecifiedTests=false -pl customer-registry-starter
+
+migration-status:
+	$(PYTHON_RUN) sh -c "pip install --quiet --no-cache-dir pyyaml && python3 scripts/migration_cli.py status"
+
+migration-guide:
+	$(PYTHON_RUN) sh -c "pip install --quiet --no-cache-dir pyyaml && python3 scripts/migration_cli.py guide"
+
+migration-init:
+	$(PYTHON_RUN) sh -c "pip install --quiet --no-cache-dir pyyaml && python3 scripts/migration_cli.py init $(ARGS)"
+
+migration-record:
+	$(PYTHON_RUN) sh -c "pip install --quiet --no-cache-dir pyyaml && python3 scripts/migration_cli.py record $(ARGS)"
+
+test-migration:
+	$(PYTHON_RUN) sh -c "pip install --quiet --no-cache-dir pyyaml pytest && python3 -m pytest scripts/test_migration_cli.py -v"

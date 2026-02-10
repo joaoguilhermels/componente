@@ -66,6 +66,11 @@ settings.xml
 .flattened-pom.xml
 
 # ========================
+# Migration CLI
+# ========================
+.migration/repos/
+
+# ========================
 # Build artifacts
 # ========================
 *.bak
