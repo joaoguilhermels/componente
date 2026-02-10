@@ -302,6 +302,8 @@ class ScorecardChecker:
             _validate_dimension_methods()
             ScorecardChecker._methods_validated = True
         self.d = detector
+        self._pkg_cache: dict[str, Optional[Path]] = {}
+        self._test_pkg_cache: dict[str, Optional[Path]] = {}
 
     def run_all(self) -> VerifyResult:
         """Run all 13 checks, grouped by phase."""
@@ -480,7 +482,10 @@ class ScorecardChecker:
         return False
 
     def check_port_interfaces(self) -> CheckResult:
-        """Verify at least 1 port interface exists in core/port/ and contains the 'interface' keyword."""
+        """Verify at least 1 port interface exists in core/port/ and contains the 'interface' keyword.
+
+        Also cross-references adapter directories to warn about ports with no implementing adapter.
+        """
         dim = DIMENSIONS["port_interfaces"]
         core_dir = self._find_package_dir("core")
         if not core_dir:
@@ -490,6 +495,7 @@ class ScorecardChecker:
             )
 
         interface_files = []
+        interface_names = []  # extracted Java interface names for cross-ref
         non_interface_files = []
         for port_dir in core_dir.rglob("port"):
             if port_dir.is_dir():
@@ -507,21 +513,53 @@ class ScorecardChecker:
                         and not ln.strip().startswith("/*")
                     ]
                     code_content = "\n".join(code_lines)
-                    if re.search(r"\binterface\s+\w+", code_content):
+                    match = re.search(r"\binterface\s+(\w+)", code_content)
+                    if match:
                         interface_files.append(f.name)
+                        interface_names.append(match.group(1))
                     else:
                         non_interface_files.append(f.name)
 
         passed = len(interface_files) >= 1
+
+        # Cross-reference: check that each port has at least one implementing adapter
+        unimplemented = []
+        if interface_names:
+            unimplemented = self._find_unimplemented_ports(interface_names)
+
         detail = f"{len(interface_files)} port interface(s): {', '.join(interface_files)}"
         if non_interface_files:
             detail += f" ({len(non_interface_files)} non-interface file(s) in port/: {', '.join(non_interface_files)})"
+        if unimplemented:
+            detail += f" [WARNING: no adapter implements {', '.join(unimplemented)}]"
         if not passed:
             detail = "No port interfaces found in core/port/ (files must contain 'interface' keyword)"
         return CheckResult(
             dimension="port_interfaces", passed=passed, detail=detail,
             weight=dim["weight"], phase=dim["phase"], label=dim["label"],
         )
+
+    def _find_unimplemented_ports(self, interface_names: list[str]) -> list[str]:
+        """Return port interface names that have no implementing class in adapter directories."""
+        adapter_dirs = ["persistence", "rest", "events", "autoconfigure"]
+        # Collect all Java source content from adapter directories
+        adapter_contents: list[str] = []
+        for pkg in adapter_dirs:
+            pkg_dir = self._find_package_dir(pkg)
+            if not pkg_dir:
+                continue
+            for java_file in pkg_dir.rglob("*.java"):
+                try:
+                    adapter_contents.append(java_file.read_text(encoding="utf-8"))
+                except (OSError, UnicodeDecodeError):
+                    continue
+
+        unimplemented = []
+        for name in interface_names:
+            pattern = re.compile(rf"\bimplements\b[^{{]*\b{re.escape(name)}\b")
+            if not any(pattern.search(content) for content in adapter_contents):
+                unimplemented.append(name)
+        return unimplemented
 
     def check_domain_test_coverage(self) -> CheckResult:
         """Verify test files with @Test methods exist for core domain packages.
@@ -613,13 +651,50 @@ class ScorecardChecker:
         )
 
     def check_adapter_integration_tests(self) -> CheckResult:
-        """Verify at least 1 integration test exists."""
-        dim = DIMENSIONS["adapter_integration_tests"]
-        test_files = list(self.d.java_test.rglob("*IntegrationTest.java"))
+        """Verify at least 1 test per present adapter module.
 
-        passed = len(test_files) >= 1
-        names = [f.name for f in test_files]
-        detail = f"{len(test_files)} test(s): {', '.join(names)}" if passed else "No integration tests found"
+        Detects which adapter packages exist in src/main/java, then requires
+        at least one ``*Test.java`` under the corresponding test directory
+        for each present adapter.  Accepts both integration tests
+        (``*IntegrationTest.java``) and slice/unit tests (``*Test.java``)
+        because not every adapter requires a full integration test — e.g.
+        REST adapters are typically tested with ``@WebMvcTest`` slices.
+        """
+        dim = DIMENSIONS["adapter_integration_tests"]
+        adapter_modules = ["persistence", "rest", "events"]
+
+        # Detect which adapter modules exist in main source
+        present_adapters = []
+        for mod in adapter_modules:
+            if self._find_package_dir(mod):
+                present_adapters.append(mod)
+
+        if not present_adapters:
+            return CheckResult(
+                dimension="adapter_integration_tests", passed=False,
+                detail="No adapter modules found",
+                weight=dim["weight"], phase=dim["phase"], label=dim["label"],
+            )
+
+        covered = []
+        missing = []
+        all_test_names = []
+        for mod in present_adapters:
+            test_dir = self._find_test_package_dir(mod)
+            tests = list(test_dir.rglob("*Test.java")) if test_dir else []
+            if tests:
+                covered.append(mod)
+                all_test_names.extend(f.name for f in tests)
+            else:
+                missing.append(mod)
+
+        passed = len(missing) == 0
+        if passed:
+            detail = f"{len(all_test_names)} test(s) across {len(covered)} adapter(s): {', '.join(all_test_names)}"
+        else:
+            detail = f"Missing adapter tests for: {', '.join(missing)}"
+            if all_test_names:
+                detail += f" (found: {', '.join(all_test_names)})"
         return CheckResult(
             dimension="adapter_integration_tests", passed=passed, detail=detail,
             weight=dim["weight"], phase=dim["phase"], label=dim["label"],
@@ -671,13 +746,17 @@ class ScorecardChecker:
                 if comb_pattern.match(line):
                     comb_indices.append(i)
 
-            # Greedily pair each @Bean with nearest unused @COMB within ±5 lines
-            # (±5 allows for Javadoc blocks between annotations)
+            # Greedily pair each @Bean with nearest unused @COMB within
+            # effective distance ≤ 5.  Effective distance counts only
+            # non-comment, non-blank lines between the two annotations,
+            # so Javadoc blocks between them don't inflate the distance.
             used_combs = set()
             for bean_idx in bean_indices:
                 total_beans += 1
                 candidates = sorted(
-                    (c for c in comb_indices if c not in used_combs and abs(c - bean_idx) <= 5),
+                    (c for c in comb_indices
+                     if c not in used_combs
+                     and self._effective_distance(c, bean_idx, lines, comment_lines) <= 5),
                     key=lambda c: abs(c - bean_idx),
                 )
                 if candidates:
@@ -720,6 +799,25 @@ class ScorecardChecker:
                     in_block = False
         return comment_lines
 
+    @staticmethod
+    def _effective_distance(a: int, b: int, lines: list[str], comment_lines: set[int]) -> int:
+        """Count non-comment, non-blank lines between indices *a* and *b* (exclusive), plus 1.
+
+        This gives the "semantic distance" between two annotations, ignoring
+        Javadoc and blank lines that inflate raw line numbers.  Returns 1 when
+        the annotations are on adjacent code lines (mirrors the old ``abs(a-b) <= 5``
+        semantics for the simple case where no comments intervene).
+        """
+        lo, hi = (a, b) if a < b else (b, a)
+        count = 0
+        for i in range(lo + 1, hi):
+            if i in comment_lines:
+                continue
+            if not lines[i].strip():
+                continue
+            count += 1
+        return count + 1  # +1 so adjacent lines → distance 1
+
     def check_feature_flags_default(self) -> CheckResult:
         """Verify zero occurrences of matchIfMissing = true (outside comments)."""
         dim = DIMENSIONS["feature_flags_default"]
@@ -735,18 +833,13 @@ class ScorecardChecker:
             # Fast path: skip files that don't mention matchIfMissing at all
             if "matchIfMissing" not in content:
                 continue
-            # Line-by-line scan, skipping comment lines
-            in_block = False
-            for line in content.splitlines():
-                stripped = line.strip()
-                if "/*" in stripped:
-                    in_block = True
-                if "*/" in stripped:
-                    in_block = False
+            # Line-by-line scan, skipping comment lines (reuse canonical helper)
+            lines = content.splitlines()
+            comment_set = self._compute_comment_lines(lines)
+            for i, line in enumerate(lines):
+                if i in comment_set:
                     continue
-                if in_block or stripped.startswith("//") or stripped.startswith("*"):
-                    continue
-                if match_re.search(stripped):
+                if match_re.search(line):
                     violations += 1
                     files_with_violations.append(java_file.name)
                     break
@@ -851,20 +944,28 @@ class ScorecardChecker:
     # ── Helpers ──
 
     def _find_package_dir(self, package_name: str) -> Optional[Path]:
-        """Find a package directory under java_main (shallowest match for determinism)."""
+        """Find a package directory under java_main (shallowest match, cached)."""
+        if package_name in self._pkg_cache:
+            return self._pkg_cache[package_name]
         candidates = sorted(
             (c for c in self.d.java_main.rglob(package_name) if c.is_dir() and c.name == package_name),
             key=lambda p: len(p.parts),
         )
-        return candidates[0] if candidates else None
+        result = candidates[0] if candidates else None
+        self._pkg_cache[package_name] = result
+        return result
 
     def _find_test_package_dir(self, package_name: str) -> Optional[Path]:
-        """Find a package directory under java_test (shallowest match for determinism)."""
+        """Find a package directory under java_test (shallowest match, cached)."""
+        if package_name in self._test_pkg_cache:
+            return self._test_pkg_cache[package_name]
         candidates = sorted(
             (c for c in self.d.java_test.rglob(package_name) if c.is_dir() and c.name == package_name),
             key=lambda p: len(p.parts),
         )
-        return candidates[0] if candidates else None
+        result = candidates[0] if candidates else None
+        self._test_pkg_cache[package_name] = result
+        return result
 
 
 # ─── StateManager ───────────────────────────────────────────────────────────

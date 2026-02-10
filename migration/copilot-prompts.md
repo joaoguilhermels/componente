@@ -1026,17 +1026,26 @@ Signals enable fine-grained change detection with OnPush strategy.
 ```
 Validate the scaffold generated in Phase 1 before proceeding to core extraction.
 
-Check these gates:
-1. Marker class exists and has @Modulithic (not @SpringBootApplication)
-2. core/package-info.java has Type.OPEN
-3. All other modules have allowedDependencies = {"core"}
-4. ModulithStructureTest.java compiles and references the correct marker class
-5. ArchitectureRulesTest.java exists with correct base package
+Open and review these files in @workspace, checking each gate:
 
-Run a quick grep to verify:
-grep -r "@Modulithic" target/src/main/java/
-grep -r "Type.OPEN" target/src/main/java/
-grep -r "allowedDependencies" target/src/main/java/
+1. **Marker class** — Open the main marker class file (e.g., target/src/main/java/<PACKAGE_PATH>/<ServiceName>Module.java).
+   Verify it has `@Modulithic` annotation (NOT `@SpringBootApplication`).
+
+2. **Core package-info** — Open target/src/main/java/<PACKAGE_PATH>/core/package-info.java.
+   Verify it contains `Type.OPEN` in the `@ApplicationModule` annotation.
+
+3. **Other module package-info files** — Open each of these:
+   - target/src/main/java/<PACKAGE_PATH>/persistence/package-info.java
+   - target/src/main/java/<PACKAGE_PATH>/rest/package-info.java
+   - target/src/main/java/<PACKAGE_PATH>/events/package-info.java
+   - target/src/main/java/<PACKAGE_PATH>/autoconfigure/package-info.java
+   Verify each has `allowedDependencies = {"core"}`.
+
+4. **ModulithStructureTest** — Open target/src/test/java/<PACKAGE_PATH>/ModulithStructureTest.java.
+   Verify it references the correct marker class by name.
+
+5. **ArchitectureRulesTest** — Open target/src/test/java/<PACKAGE_PATH>/ArchitectureRulesTest.java.
+   Verify the base package string is correct.
 
 Report: PASS or FAIL for each gate. If any FAIL, fix before proceeding to Phase 2.
 ```
@@ -1051,17 +1060,36 @@ Report: PASS or FAIL for each gate. If any FAIL, fix before proceeding to Phase 
 ```
 Validate the core extraction from Phase 2 before proceeding to adapter creation.
 
-Check these gates:
-1. Zero infrastructure imports in core/:
-   grep -r "import jakarta\.\|import org\.springframework\.data\.\|import org\.springframework\.web\.\|import org\.springframework\.stereotype\." target/src/main/java/**/core/
-   Expected: zero results (note: @Transactional and @Modulithic are allowed exceptions)
+Review the files in @workspace, checking each gate:
 
-2. Port interfaces exist in core/port/ and contain the 'interface' keyword
-3. Domain model classes have static factory methods (no public constructors)
-4. PII is masked in toString() methods
-5. Domain events (if applicable) do not contain PII
-6. Service class has no @Service or @Component annotation
-7. Core unit tests exist and use no Spring context
+1. **Core isolation** — Open every `.java` file under target/src/main/java/**/core/.
+   Scan import statements for these FORBIDDEN packages:
+   - `jakarta.persistence`
+   - `org.springframework.data`
+   - `org.springframework.web`
+   - `org.springframework.stereotype`
+   - `org.springframework.boot`
+   - `org.springframework.context`
+   - `org.springframework.beans`
+   ALLOWED exceptions: `org.springframework.transaction.annotation.Transactional` and `org.springframework.modulith.*`.
+   Expected: zero forbidden imports.
+
+2. **Port interfaces** — Open each file in target/src/main/java/<PACKAGE_PATH>/core/port/.
+   Verify each file declares a Java `interface` (not a class).
+
+3. **Domain model** — Open files in target/src/main/java/<PACKAGE_PATH>/core/model/.
+   Verify classes use named static factory methods instead of public constructors.
+
+4. **PII masking** — Check `toString()` methods in model classes.
+   Documents (CPF/CNPJ) must be masked (e.g., `***.***.789-00`).
+
+5. **Domain events** — If events exist in core/event/, verify they do not contain PII fields.
+
+6. **Service class** — Open the service class in core/service/.
+   Verify it has NO `@Service` or `@Component` annotation.
+
+7. **Core unit tests** — Open test files under target/src/test/java/**/core/.
+   Verify they use `@ExtendWith(MockitoExtension.class)`, NOT `@SpringBootTest`.
 
 Report: PASS or FAIL for each gate. If core isolation fails, fix before Phase 3.
 ```
@@ -1076,23 +1104,32 @@ Report: PASS or FAIL for each gate. If core isolation fails, fix before Phase 3.
 ```
 Validate the adapters from Phase 3 before proceeding to auto-configuration.
 
-Check these gates:
-1. Bridge config classes are PUBLIC:
-   grep "public class.*Configuration" target/src/main/java/**/persistence/ target/src/main/java/**/rest/ target/src/main/java/**/events/
+Review the files in @workspace, checking each gate:
 
-2. Adapter classes are package-private (NOT public):
-   grep "public class.*Adapter\|public class.*Controller\|public class.*Publisher" target/src/main/java/**/persistence/ target/src/main/java/**/rest/ target/src/main/java/**/events/
-   Expected: zero results
+1. **Bridge config visibility** — Open each `*Configuration.java` file in these directories:
+   - target/src/main/java/<PACKAGE_PATH>/persistence/
+   - target/src/main/java/<PACKAGE_PATH>/rest/
+   - target/src/main/java/<PACKAGE_PATH>/events/
+   Verify each has `public class` (bridge configs MUST be public).
 
-3. Each bridge config has at least one @Bean method with @ConditionalOnMissingBean
+2. **Adapter visibility** — Open each adapter/controller/publisher class in the same directories.
+   Verify they do NOT have the `public` modifier (must be package-private).
+   Look for: `*Adapter.java`, `*Controller.java`, `*Publisher.java`.
 
-4. JPA entities implement Persistable<UUID>
+3. **@ConditionalOnMissingBean** — In each bridge config, verify every `@Bean` method
+   also has `@ConditionalOnMissingBean` annotation nearby.
 
-5. Entity mapper is a separate utility class (not methods on JPA entity)
+4. **Persistable<UUID>** — Open each JPA entity in persistence/.
+   Verify the class `implements Persistable<UUID>`.
 
-6. @JdbcTypeCode(SqlTypes.JSON) used for JSONB columns (not @Convert)
+5. **Entity mapper** — Verify there is a separate `*EntityMapper.java` utility class
+   (NOT mapper methods directly on the JPA entity class).
 
-7. Controller test has @SpringBootApplication inner class
+6. **JSONB handling** — In JPA entity files, verify JSONB columns use
+   `@JdbcTypeCode(SqlTypes.JSON)`, NOT `@Convert`.
+
+7. **Controller test** — Open the REST controller test file.
+   Verify it contains a `@SpringBootApplication` inner class (required for library modules).
 
 Report: PASS or FAIL for each gate. Fix adapter issues before Phase 4 wiring.
 ```
@@ -1107,27 +1144,34 @@ Report: PASS or FAIL for each gate. Fix adapter issues before Phase 4 wiring.
 ```
 Validate the auto-configuration from Phase 4 before final verification.
 
-Check these gates:
-1. Adapter auto-configs use dual-gate pattern:
-   grep -A3 '@ConditionalOnProperty' target/src/main/java/**/autoconfigure/*AutoConfiguration.java
-   Expected: adapter auto-configs show name = {"enabled", "features.<name>"}
+Review the files in @workspace, checking each gate:
 
-2. Core auto-config uses single gate (master switch only)
+1. **Dual-gate pattern** — Open each adapter auto-config in target/src/main/java/<PACKAGE_PATH>/autoconfigure/:
+   - `*EventsAutoConfiguration.java`
+   - `*PersistenceAutoConfiguration.java`
+   - `*RestAutoConfiguration.java`
+   Verify each has `@ConditionalOnProperty` with `name = {"enabled", "features.<name>"}` (dual-gate).
 
-3. No matchIfMissing = true anywhere:
-   grep "matchIfMissing.*true" target/src/main/java/**/autoconfigure/
-   Expected: zero results
+2. **Core single gate** — Open `*CoreAutoConfiguration.java`.
+   Verify it uses only the master switch: `name = "<prefix>.enabled"` (no feature sub-key).
 
-4. Events auto-config ordered BEFORE core auto-config:
-   grep -A1 "@AutoConfiguration" target/src/main/java/**/autoconfigure/*Events*AutoConfiguration.java
+3. **No matchIfMissing = true** — Search all auto-config files for `matchIfMissing`.
+   Verify the string `matchIfMissing = true` does NOT appear anywhere.
 
-5. META-INF/spring/...AutoConfiguration.imports lists ALL auto-config classes
+4. **Events ordering** — Open the Events auto-config class.
+   Verify it has `@AutoConfiguration(before = ...)` referencing the Core auto-config.
 
-6. All auto-config classes have structured header comments (ORDERING, GATE, BRIDGE, OVERRIDABLE)
+5. **META-INF registration** — Open target/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports.
+   Verify ALL auto-config classes are listed (Events, Core, Persistence, REST).
 
-7. Feature flag property names use kebab-case (publish-events, persistence-jpa, rest-api)
+6. **Header comments** — Each auto-config class should have a structured header comment
+   with ORDERING, GATE, BRIDGE, and OVERRIDABLE sections.
 
-8. Properties class has all features defaulting to false
+7. **Kebab-case properties** — Verify feature flag names use kebab-case in annotations:
+   `publish-events`, `persistence-jpa`, `rest-api`.
+
+8. **Properties class defaults** — Open the `*Properties.java` class.
+   Verify all feature boolean fields default to `false`.
 
 Report: PASS or FAIL for each gate. Fix auto-config issues before proceeding.
 ```
@@ -1283,13 +1327,13 @@ Suggested fix: add explicit 'use @JdbcTypeCode, not @Convert' to the prompt."
 
 Before starting each phase, verify. Run the corresponding **G.x** validation prompt between phases.
 
-| Phase | Pre-Condition | Gate | Validation |
-|-------|---------------|------|------------|
-| 0 | Legacy code accessible in workspace | Tier assessment + analysis report | — |
-| 1 | Phase 0 analysis complete | ModulithStructureTest compiles | Run **G.1** |
-| 2 | Phase 1 scaffold validated | Zero infra imports in core/ | Run **G.2** |
-| 3 | Phase 2 core validated | Bridge configs exist for all adapters | Run **G.3** |
-| 4 | Phase 3 adapters validated | @Bean count == @ConditionalOnMissingBean count | Run **G.4** |
-| 5 | Phase 4 auto-config validated | Angular build succeeds (if applicable) | — |
-| V | All phases complete | All verification checks PASS | — |
-| L | Verification complete | MIGRATION-LESSONS.md filled in | — |
+| Phase | Tier | Pre-Condition | Gate | Validation |
+|-------|------|---------------|------|------------|
+| 0 | All | Legacy code accessible in workspace | Tier assessment + analysis report | — |
+| 1 | All | Phase 0 analysis complete | ModulithStructureTest compiles | Run **G.1** |
+| 2 | All | Phase 1 scaffold validated | Zero infra imports in core/ | Run **G.2** |
+| 3 | All | Phase 2 core validated | Bridge configs exist for all adapters | Run **G.3** |
+| 4 | All | Phase 3 adapters validated | @Bean count == @ConditionalOnMissingBean count | Run **G.4** |
+| 5 | Advanced | Phase 4 auto-config validated | Angular build succeeds (if applicable) | — |
+| V | All | All phases complete | All verification checks PASS | — |
+| L | All | Verification complete | MIGRATION-LESSONS.md filled in | — |

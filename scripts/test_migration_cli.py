@@ -345,7 +345,7 @@ class TestIndividualChecks:
     def test_integration_tests_found(self, reference_checker):
         result = reference_checker.check_adapter_integration_tests()
         assert result.passed
-        assert int(result.detail.split()[0]) >= 1
+        assert "3 adapter(s)" in result.detail
 
     def test_conditional_on_missing_bean_parity(self, reference_checker):
         result = reference_checker.check_conditional_on_missing_bean()
@@ -672,6 +672,76 @@ class TestCombPerMethodPairing:
         result = checker.check_conditional_on_missing_bean()
         assert result.passed
 
+    def test_comb_with_7_line_javadoc_still_paired(self, tmp_repo):
+        """C1: 7-line Javadoc between COMB and Bean should PASS (effective distance is 0)."""
+        tmp_path, java_root, _, _ = tmp_repo
+        config = java_root / "autoconfigure" / "CoreAutoConfiguration.java"
+        config.write_text(textwrap.dedent("""\
+            public class CoreAutoConfiguration {
+                @ConditionalOnMissingBean
+                /**
+                 * Creates the customer service.
+                 * This is a longer Javadoc block that
+                 * spans multiple lines to describe
+                 * the purpose of this bean factory
+                 * method in great detail.
+                 */
+                @Bean
+                public Foo foo() { return new Foo(); }
+            }
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_conditional_on_missing_bean()
+        assert result.passed, f"7-line Javadoc between COMB and Bean should not break pairing: {result.detail}"
+
+    def test_comb_boundary_5_non_comment_lines_fails(self, tmp_repo):
+        """C1 boundary: 6 non-comment, non-blank lines between COMB and Bean should FAIL."""
+        tmp_path, java_root, _, _ = tmp_repo
+        config = java_root / "autoconfigure" / "CoreAutoConfiguration.java"
+        config.write_text(textwrap.dedent("""\
+            public class CoreAutoConfiguration {
+                @ConditionalOnMissingBean
+                @SuppressWarnings("unused")
+                @Deprecated
+                @Override
+                @SafeVarargs
+                @FunctionalInterface
+                @SomeOtherAnnotation
+                @Bean
+                public Foo foo() { return new Foo(); }
+            }
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_conditional_on_missing_bean()
+        # 6 non-comment lines between COMB and Bean → effective distance = 7 > 5 → FAIL
+        assert not result.passed, f"6 non-comment lines between COMB and Bean should fail: {result.detail}"
+
+    def test_comb_boundary_4_non_comment_lines_passes(self, tmp_repo):
+        """C1 boundary: 4 non-comment, non-blank lines between COMB and Bean should PASS."""
+        tmp_path, java_root, _, _ = tmp_repo
+        config = java_root / "autoconfigure" / "CoreAutoConfiguration.java"
+        config.write_text(textwrap.dedent("""\
+            public class CoreAutoConfiguration {
+                @ConditionalOnMissingBean
+                @SuppressWarnings("unused")
+                @Deprecated
+                @Override
+                @SafeVarargs
+                @Bean
+                public Foo foo() { return new Foo(); }
+            }
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_conditional_on_missing_bean()
+        # 4 non-comment lines between → effective distance = 5 → PASS
+        assert result.passed, f"4 non-comment lines between COMB and Bean should pass: {result.detail}"
+
 
 # ─── Core Isolation Boundary Rules ──────────────────────────────────────────
 
@@ -956,6 +1026,15 @@ class TestCmdVerify:
         output = capsys.readouterr().out.strip()
         assert output == "PASS 13/13 100%"
 
+    def test_invalid_phase_returns_error(self, capsys):
+        """M5: verify --phase 99 should return error code 1 with message."""
+        parser = cli.build_parser()
+        args = parser.parse_args(["verify", "--self-test", "--phase", "99"])
+        exit_code = cli.cmd_verify(args)
+        assert exit_code == 1
+        captured = capsys.readouterr()
+        assert "Invalid phase" in captured.err
+
 
 # ─── End-to-End: cmd_status ──────────────────────────────────────────────────
 
@@ -1147,6 +1226,61 @@ class TestSemanticPortChecks:
         assert "1 port interface(s)" in result.detail
 
 
+class TestPortCrossReference:
+    """H3: Port interfaces should warn when no adapter implements them."""
+
+    def test_port_with_adapter_no_warning(self, tmp_repo):
+        """Port interface that has an implementing adapter → no WARNING."""
+        tmp_path, java_root, _, _ = tmp_repo
+        port_dir = java_root / "core" / "port"
+        port_dir.mkdir(parents=True, exist_ok=True)
+        port_dir.joinpath("FooRepository.java").write_text(textwrap.dedent("""\
+            package com.example.svc.core.port;
+            public interface FooRepository {
+                void save();
+            }
+        """))
+        # Adapter implementing the port
+        adapter = java_root / "persistence" / "FooPersistenceAdapter.java"
+        adapter.write_text(textwrap.dedent("""\
+            package com.example.svc.persistence;
+            class FooPersistenceAdapter implements FooRepository {
+                public void save() {}
+            }
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_port_interfaces()
+        assert result.passed
+        assert "WARNING" not in result.detail
+
+    def test_port_without_adapter_warns(self, tmp_repo):
+        """Port interface with no implementing adapter → WARNING in detail."""
+        tmp_path, java_root, _, _ = tmp_repo
+        port_dir = java_root / "core" / "port"
+        port_dir.mkdir(parents=True, exist_ok=True)
+        port_dir.joinpath("OrphanPort.java").write_text(textwrap.dedent("""\
+            package com.example.svc.core.port;
+            public interface OrphanPort {
+                void doSomething();
+            }
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_port_interfaces()
+        assert result.passed  # still passes — WARNING, not FAIL
+        assert "WARNING" in result.detail
+        assert "OrphanPort" in result.detail
+
+    def test_reference_repo_ports_all_implemented(self, reference_checker):
+        """Reference repo should have all ports implemented (no warnings)."""
+        result = reference_checker.check_port_interfaces()
+        assert result.passed
+        assert "WARNING" not in result.detail
+
+
 class TestSemanticBridgeConfigChecks:
     """C1: Bridge config check verifies @Bean methods exist."""
 
@@ -1183,6 +1317,54 @@ class TestSemanticBridgeConfigChecks:
         checker = cli.ScorecardChecker(detector)
         result = checker.check_bridge_configs()
         assert result.passed
+
+
+class TestPerAdapterIntegrationTests:
+    """H4: Adapter test check requires >= 1 test per present adapter module."""
+
+    def test_all_adapters_covered_passes(self, tmp_repo):
+        """All present adapters have test files → PASS."""
+        tmp_path, java_root, test_root, _ = tmp_repo
+        # Create adapter test dirs and tests
+        for mod in ["persistence", "rest", "events"]:
+            tdir = test_root / mod
+            tdir.mkdir(parents=True, exist_ok=True)
+            (tdir / f"{mod.title()}AdapterTest.java").write_text("// test")
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_adapter_integration_tests()
+        assert result.passed
+        assert "3 adapter(s)" in result.detail
+
+    def test_missing_adapter_test_fails(self, tmp_repo):
+        """Persistence has tests but rest does not → FAIL naming rest."""
+        tmp_path, java_root, test_root, _ = tmp_repo
+        # persistence has test
+        p_test = test_root / "persistence"
+        p_test.mkdir(parents=True, exist_ok=True)
+        (p_test / "PersistenceAdapterTest.java").write_text("// test")
+        # rest has no test (but rest package exists in main)
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_adapter_integration_tests()
+        assert not result.passed
+        assert "rest" in result.detail
+        assert "events" in result.detail  # events also present but no test
+
+    def test_no_adapters_fails(self, tmp_path):
+        """No adapter modules at all → FAIL."""
+        # bare repo with only src structure, no adapter packages
+        java_root = tmp_path / "src" / "main" / "java"
+        java_root.mkdir(parents=True)
+        test_root = tmp_path / "src" / "test" / "java"
+        test_root.mkdir(parents=True)
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_adapter_integration_tests()
+        assert not result.passed
 
 
 class TestSemanticDomainTestChecks:
