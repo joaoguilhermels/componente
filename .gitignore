@@ -66,6 +66,13 @@ settings.xml
 .flattened-pom.xml
 
 # ========================
+# Migration CLI
+# ========================
+.migration/repos/
+__pycache__/
+*.pyc
+
+# ========================
 # Build artifacts
 # ========================
 *.bak

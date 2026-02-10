@@ -1,15 +1,8 @@
 # Migration Lessons Learned -- <SERVICE_NAME>
 
-## Migration Metadata
-
-- **Date**: <DATE>
-- **Legacy Service**: <SERVICE_NAME>
-- **Source Repository**: <LEGACY_REPO_URL>
-- **Target Repository**: <TARGET_REPO_URL>
-- **Tier**: <Simple|Standard|Advanced>
-- **Copilot Model**: <MODEL_VERSION>
-- **Total Phases Completed**: <0-5>
-- **Final Scorecard Score**: <PERCENTAGE>
+> **Quantitative data** (scores, timing, errors, improvements) goes in
+> `docs/presentations/poc-data.yml`. This document captures qualitative
+> observations only.
 
 ---
 
@@ -55,7 +48,7 @@
 | **Port interfaces created?** | Yes/No -- list ports |
 | **SPI interfaces created?** | Yes/No -- list SPIs |
 | **Service layer clean?** | No Spring stereotypes? |
-| **Event records created?** | Yes/No -- PII masked? |
+| **Event records created?** | Yes/No -- PII masked (not omitted — partially redact, e.g. `***.***.789-00`)? |
 | **Deviations from reference** | Where output differed from Customer.java pattern |
 | **Zero infra imports in core?** | Verified with grep? |
 
@@ -127,36 +120,8 @@
 
 - <!-- Bullet points -->
 
-### Suggested Prompt Changes
-
-| Phase | Current Prompt Issue | Suggested Fix |
-|-------|---------------------|---------------|
-| | | |
-
-### Suggested Instruction File Changes
-
-| File | Issue | Suggested Fix |
-|------|-------|---------------|
-| | | |
-
 ### Patterns Not Covered
 
 Legacy patterns found that are not addressed by current instructions:
 
 - <!-- Bullet points describing each uncovered pattern -->
-
----
-
-## Appendix: File Inventory
-
-### Files Generated
-
-| File | Phase | First-Try Correct? |
-|------|-------|--------------------|
-| | | |
-
-### Files Requiring Manual Fixes
-
-| File | Issue | Fix Applied |
-|------|-------|-------------|
-| | | |

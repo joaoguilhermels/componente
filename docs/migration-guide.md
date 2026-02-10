@@ -99,6 +99,10 @@ you hit a real problem that hexagonal architecture solves.
 Dependency rule: arrows point **inward**. Core depends on nothing. Adapters depend on core.
 Auto-configuration wires adapters to core.
 
+> **Exception**: `@Transactional` (`org.springframework.transaction.annotation`) is
+> permitted in core services because transaction boundaries are a cross-cutting concern,
+> not an infrastructure coupling. See [Section 10](#10-pragmatic-vs-strict-hexagonal).
+
 ---
 
 ## 2. Prerequisites
@@ -875,6 +879,34 @@ Bean not found?
     +-- Does another auto-config run BEFORE and register a fallback?
             Yes -> Add @AutoConfiguration(before = ...) to run earlier
 ```
+
+### Pattern Exceptions
+
+The reference architecture has two modules that intentionally deviate from the standard
+adapter patterns. Both are documented here so teams copying the reference know these are
+deliberate exceptions, not oversights.
+
+**`observability/` — No Bridge Configuration**
+
+The observability module has a `CustomerObservabilityConfiguration.java` but its beans are
+registered directly by the auto-configuration class rather than through the standard bridge
+`@Import` pattern. This is intentional: observability beans (metrics, spans) are infrastructure
+cross-cutting concerns that wrap the service, not adapters that implement a core port. They
+do not need `@ConditionalOnMissingBean` overridability in the same way persistence or REST
+adapters do.
+
+**`migration/` — Depends on Core AND Persistence**
+
+The migration module (`AttributeMigrationService`) depends on both `core` and `persistence`
+because it must coordinate schema evolution with domain model changes. This is the only module
+in the reference that has `allowedDependencies = {"core", "persistence"}`. This is acceptable
+because:
+
+1. Data migration is inherently tied to the storage layer being migrated
+2. The module is gated by its own feature flag (`features.migrations`) and is optional
+3. It does not establish a runtime dependency cycle — it only runs during schema upgrades
+
+If your service does not need Liquibase-based data migration, omit this module entirely.
 
 ---
 
