@@ -9,8 +9,11 @@ import com.onefinancial.customer.core.model.Document;
 import com.onefinancial.customer.core.service.CustomerRegistryService;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
@@ -27,6 +30,7 @@ import java.util.UUID;
  */
 @RestController
 @RequestMapping("/api/v1/customers")
+@Validated
 class CustomerController {
 
     private final CustomerRegistryService service;
@@ -87,8 +91,8 @@ class CustomerController {
 
     @GetMapping
     ResponseEntity<CustomerPageResponse> findAll(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         CustomerPage customerPage = service.findAllPaginated(page, size);
 
         List<CustomerResponse> responses = customerPage.customers().stream()
@@ -110,6 +114,14 @@ class CustomerController {
         return ResponseEntity.ok(response);
     }
 
+    /**
+     * Applies a partial update to an existing customer.
+     *
+     * <p>Note: When both {@code displayName} and {@code status} are provided,
+     * they are applied as two separate transactions. If the status change fails
+     * (e.g., invalid transition), the display name change will already be committed.
+     * Callers requiring atomicity should use separate requests.</p>
+     */
     @PatchMapping("/{id}")
     ResponseEntity<CustomerResponse> update(
             @PathVariable UUID id,

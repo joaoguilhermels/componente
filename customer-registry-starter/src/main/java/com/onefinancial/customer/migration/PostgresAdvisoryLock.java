@@ -101,20 +101,18 @@ public class PostgresAdvisoryLock implements AutoCloseable {
      */
     @Override
     public void close() {
-        if (!acquired || dedicatedConnection == null) {
-            return;
-        }
-        try (PreparedStatement ps = dedicatedConnection
-                .prepareStatement("SELECT pg_advisory_unlock(?)")) {
-            ps.setLong(1, lockKey);
-            ps.execute();
-            log.info("Released advisory lock (key={})", lockKey);
-        } catch (SQLException e) {
-            log.warn("Failed to release advisory lock (key={}): {}", lockKey, e.getMessage());
-        } finally {
+        if (acquired && dedicatedConnection != null) {
+            try (PreparedStatement ps = dedicatedConnection
+                    .prepareStatement("SELECT pg_advisory_unlock(?)")) {
+                ps.setLong(1, lockKey);
+                ps.execute();
+                log.info("Released advisory lock (key={})", lockKey);
+            } catch (SQLException e) {
+                log.warn("Failed to release advisory lock (key={}): {}", lockKey, e.getMessage());
+            }
             acquired = false;
-            closeDedicatedConnection();
         }
+        closeDedicatedConnection();
     }
 
     private void closeDedicatedConnection() {

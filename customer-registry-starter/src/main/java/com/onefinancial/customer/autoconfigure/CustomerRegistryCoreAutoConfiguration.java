@@ -5,6 +5,7 @@ import com.onefinancial.customer.core.port.CustomerRepository;
 import com.onefinancial.customer.core.service.CustomerRegistryService;
 import com.onefinancial.customer.core.spi.CustomerEnricher;
 import com.onefinancial.customer.core.spi.CustomerValidator;
+import com.onefinancial.customer.core.spi.CustomerOperationMetrics;
 
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -15,6 +16,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.support.ReloadableResourceBundleMessageSource;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Core auto-configuration for Customer Registry.
@@ -53,8 +55,9 @@ public class CustomerRegistryCoreAutoConfiguration {
             List<CustomerValidator> validators,
             List<CustomerEnricher> enrichers,
             CustomerRepository repository,
-            CustomerEventPublisher eventPublisher) {
-        return new CustomerRegistryService(validators, enrichers, repository, eventPublisher);
+            CustomerEventPublisher eventPublisher,
+            Optional<CustomerOperationMetrics> metrics) {
+        return new CustomerRegistryService(validators, enrichers, repository, eventPublisher, metrics);
     }
 
     @Bean("customerRegistryMessageSource")

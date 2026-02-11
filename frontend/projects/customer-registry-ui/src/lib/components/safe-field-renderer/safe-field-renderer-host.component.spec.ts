@@ -267,6 +267,75 @@ describe('SafeFieldRendererHostComponent', () => {
     });
   });
 
+  describe('ViewChild timing (A2)', () => {
+    it('should create custom renderer when registration is provided as initial input', () => {
+      const registration: FieldRendererRegistration = {
+        rendererId: 'good-renderer',
+        component: GoodRendererComponent,
+      };
+
+      // Set registration BEFORE first detectChanges — simulates initial @Input binding
+      component.registration = registration;
+      fixture.detectChanges(); // triggers ngOnChanges + ngAfterViewInit
+
+      expect(component.useFallback()).toBe(false);
+      expect(errorReporter.report).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('disabled state propagation (A3)', () => {
+    it('should propagate disabled state to existing custom renderer', () => {
+      @Component({
+        selector: 'test-disableable-renderer',
+        standalone: true,
+        template: '<input class="disableable" />',
+      })
+      class DisableableRendererComponent {
+        context: unknown;
+        disabledState = false;
+        setDisabledState(isDisabled: boolean): void {
+          this.disabledState = isDisabled;
+        }
+      }
+
+      const registration: FieldRendererRegistration = {
+        rendererId: 'disableable-renderer',
+        component: DisableableRendererComponent,
+      };
+      component.registration = registration;
+      fixture.detectChanges();
+      component.ngOnChanges({
+        registration: {
+          currentValue: registration,
+          previousValue: undefined,
+          firstChange: true,
+          isFirstChange: () => true,
+        },
+      });
+      fixture.detectChanges();
+
+      expect(component.useFallback()).toBe(false);
+
+      // Now change disabled state
+      component.disabled = true;
+      component.ngOnChanges({
+        disabled: {
+          currentValue: true,
+          previousValue: false,
+          firstChange: false,
+          isFirstChange: () => false,
+        },
+      });
+
+      // The dynamic component should have received setDisabledState(true)
+      const hostEl = fixture.nativeElement as HTMLElement;
+      const rendererHost = component['componentRef'];
+      expect(rendererHost).toBeTruthy();
+      const instance = rendererHost!.instance as DisableableRendererComponent;
+      expect(instance.disabledState).toBe(true);
+    });
+  });
+
   describe('missing registration (C11)', () => {
     it('should report error when no registration is provided', () => {
       component.fieldKey = 'test-field';

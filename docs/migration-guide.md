@@ -914,7 +914,8 @@ in the reference that has `allowedDependencies = {"core", "persistence"}`. This 
 because:
 
 1. Data migration is inherently tied to the storage layer being migrated
-2. The module is gated by its own feature flag (`features.migrations`) and is optional
+2. The module is gated by `features.persistence-jpa` (same flag as the persistence adapter) and
+   optionally runs on startup via `features.attributes-auto-migrate-on-startup`
 3. It does not establish a runtime dependency cycle — it only runs during schema upgrades
 
 If your service does not need Liquibase-based data migration, omit this module entirely.
@@ -1495,8 +1496,11 @@ customer-registry-starter/src/main/java/com/onefinancial/customer/
             CustomerStatusChanged.java, CustomerDeleted.java
         exception/
             CustomerNotFoundException.java
+            CustomerRegistryException.java         # Base exception class
             CustomerValidationException.java
+            DocumentValidationException.java       # Invalid CPF/CNPJ format
             DuplicateDocumentException.java
+            InvalidStatusTransitionException.java  # Illegal status change
         service/
             CustomerRegistryService.java           # Domain service
 
@@ -1524,12 +1528,19 @@ customer-registry-starter/src/main/java/com/onefinancial/customer/
         package-info.java                          # allowedDependencies = {"core"}
         CustomerObservabilityConfiguration.java    # PUBLIC bridge
 
+    migration/
+        package-info.java                          # allowedDependencies = {"core", "persistence"}
+        AttributeMigrationService.java             # Migration orchestrator
+        AttributeSchemaMigration.java              # SPI for schema migrations
+        PostgresAdvisoryLock.java                  # Distributed lock for migrations
+
     autoconfigure/
         CustomerRegistryCoreAutoConfiguration.java
         CustomerRegistryPersistenceAutoConfiguration.java
         CustomerRegistryRestAutoConfiguration.java
         CustomerRegistryEventsAutoConfiguration.java
         CustomerRegistryObservabilityAutoConfiguration.java
+        CustomerRegistryMigrationAutoConfiguration.java  # Migration wiring
         CustomerRegistryProperties.java
         InMemoryCustomerRepository.java            # Fallback
         NoOpEventPublisher.java                    # Fallback

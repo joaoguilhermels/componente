@@ -148,11 +148,24 @@ class CustomerExceptionHandler {
         return problem;
     }
 
+    @ExceptionHandler(jakarta.validation.ConstraintViolationException.class)
+    ProblemDetail handleConstraintViolation(jakarta.validation.ConstraintViolationException ex) {
+        List<String> errors = ex.getConstraintViolations().stream()
+            .map(v -> v.getPropertyPath() + ": " + v.getMessage())
+            .toList();
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_REQUEST, String.join("; ", errors));
+        problem.setTitle("Validation Error");
+        problem.setProperty("errors", errors);
+        return problem;
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     ProblemDetail handleIllegalArgument(IllegalArgumentException ex) {
         log.warn("Invalid argument rejected: {}", ex.getMessage());
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-            HttpStatus.BAD_REQUEST, ex.getMessage());
+            HttpStatus.BAD_REQUEST, "Invalid request parameter");
         problem.setTitle("Bad Request");
         return problem;
     }

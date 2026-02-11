@@ -59,11 +59,11 @@ class CustomerEventValidationTest {
         }
 
         @Test
-        void shouldGenerateDeterministicEventId() {
+        void shouldGenerateUniqueEventIdForSuccessiveCalls() {
             var event1 = CustomerCreated.of(ID, CustomerType.PF);
             var event2 = CustomerCreated.of(ID, CustomerType.PF);
 
-            assertThat(event1.eventId()).isEqualTo(event2.eventId());
+            assertThat(event1.eventId()).isNotEqualTo(event2.eventId());
         }
 
         @Test
@@ -110,11 +110,11 @@ class CustomerEventValidationTest {
         }
 
         @Test
-        void shouldGenerateDeterministicEventId() {
+        void shouldGenerateUniqueEventIdForSuccessiveCalls() {
             var event1 = CustomerDeleted.of(ID);
             var event2 = CustomerDeleted.of(ID);
 
-            assertThat(event1.eventId()).isEqualTo(event2.eventId());
+            assertThat(event1.eventId()).isNotEqualTo(event2.eventId());
         }
     }
 
@@ -152,11 +152,11 @@ class CustomerEventValidationTest {
         }
 
         @Test
-        void shouldGenerateDeterministicEventId() {
+        void shouldGenerateUniqueEventIdForSuccessiveCalls() {
             var event1 = CustomerUpdated.of(ID);
             var event2 = CustomerUpdated.of(ID);
 
-            assertThat(event1.eventId()).isEqualTo(event2.eventId());
+            assertThat(event1.eventId()).isNotEqualTo(event2.eventId());
         }
     }
 
@@ -210,11 +210,11 @@ class CustomerEventValidationTest {
         }
 
         @Test
-        void shouldGenerateDeterministicEventId() {
+        void shouldGenerateUniqueEventIdForSuccessiveCalls() {
             var event1 = CustomerStatusChanged.of(ID, CustomerStatus.DRAFT, CustomerStatus.ACTIVE);
             var event2 = CustomerStatusChanged.of(ID, CustomerStatus.DRAFT, CustomerStatus.ACTIVE);
 
-            assertThat(event1.eventId()).isEqualTo(event2.eventId());
+            assertThat(event1.eventId()).isNotEqualTo(event2.eventId());
         }
     }
 }

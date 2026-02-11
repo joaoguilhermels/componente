@@ -26,6 +26,7 @@ export const LOCALE_EN: Record<string, string> = {
   'label.remove': 'Remove',
   'label.noResults': 'No results found.',
   'label.actions': 'Actions',
+  'label.viewDetails': 'View details',
 
   // Customer types
   'customer.type.PF': 'Individual',

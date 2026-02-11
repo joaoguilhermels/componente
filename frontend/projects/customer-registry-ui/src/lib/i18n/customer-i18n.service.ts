@@ -68,7 +68,7 @@ export class CustomerI18nService {
     }
 
     params.forEach((param, i) => {
-      value = value!.replace(`{${i}}`, String(param));
+      value = value!.replaceAll(`{${i}}`, String(param));
     });
     return value;
   }

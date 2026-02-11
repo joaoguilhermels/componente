@@ -36,7 +36,7 @@ import { CustomerSearchParams } from '../../models/customer.model';
         <mat-form-field appearance="outline" class="crui-search-field">
           <mat-label>{{ 'field.type' | translate }}</mat-label>
           <mat-select formControlName="type">
-            <mat-option [value]="undefined">{{ 'label.all' | translate }}</mat-option>
+            <mat-option [value]="null">{{ 'label.all' | translate }}</mat-option>
             <mat-option value="PF">{{ 'customer.type.PF' | translate }}</mat-option>
             <mat-option value="PJ">{{ 'customer.type.PJ' | translate }}</mat-option>
           </mat-select>
@@ -45,7 +45,7 @@ import { CustomerSearchParams } from '../../models/customer.model';
         <mat-form-field appearance="outline" class="crui-search-field">
           <mat-label>{{ 'field.status' | translate }}</mat-label>
           <mat-select formControlName="status">
-            <mat-option [value]="undefined">{{ 'label.all' | translate }}</mat-option>
+            <mat-option [value]="null">{{ 'label.all' | translate }}</mat-option>
             <mat-option value="DRAFT">{{ 'customer.status.DRAFT' | translate }}</mat-option>
             <mat-option value="ACTIVE">{{ 'customer.status.ACTIVE' | translate }}</mat-option>
             <mat-option value="SUSPENDED">{{ 'customer.status.SUSPENDED' | translate }}</mat-option>
@@ -106,8 +106,8 @@ export class CustomerSearchComponent {
   @Output() readonly reset = new EventEmitter<void>();
 
   readonly searchForm: FormGroup = this.fb.group({
-    type: [undefined],
-    status: [undefined],
+    type: [null],
+    status: [null],
     document: [''],
     displayName: [''],
   });
@@ -132,8 +132,8 @@ export class CustomerSearchComponent {
 
   onReset(): void {
     this.searchForm.reset({
-      type: undefined,
-      status: undefined,
+      type: null,
+      status: null,
       document: '',
       displayName: '',
     });

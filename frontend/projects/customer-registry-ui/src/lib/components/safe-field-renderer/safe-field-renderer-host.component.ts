@@ -1,6 +1,8 @@
 import {
+  AfterViewInit,
   ChangeDetectionStrategy,
   Component,
+  ComponentRef,
   ErrorHandler,
   inject,
   Input,
@@ -58,7 +60,7 @@ import { CUSTOMER_UI_RENDERER_ERROR_REPORTER } from '../../tokens';
     }
   `],
 })
-export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
+export class SafeFieldRendererHostComponent implements OnChanges, AfterViewInit, OnDestroy {
   /** The renderer registration to use for this field */
   @Input() registration!: FieldRendererRegistration;
 
@@ -82,12 +84,18 @@ export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
 
   private readonly errorReporter = inject(CUSTOMER_UI_RENDERER_ERROR_REPORTER);
   private readonly errorHandler = inject(ErrorHandler);
+  private componentRef?: ComponentRef<unknown>;
   private fallbackSubscription?: Subscription;
   private controlSubscription?: Subscription;
+  private pendingRetry = false;
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['registration'] || changes['control']) {
-      this.tryCreateRenderer();
+      if (this.rendererHost) {
+        this.tryCreateRenderer();
+      } else {
+        this.pendingRetry = true;
+      }
     }
     if (changes['disabled']) {
       if (this.disabled) {
@@ -95,6 +103,19 @@ export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
       } else {
         this.fallbackControl.enable();
       }
+      if (this.componentRef) {
+        const instance = this.componentRef.instance as Record<string, unknown>;
+        if ('setDisabledState' in instance && typeof instance['setDisabledState'] === 'function') {
+          (instance['setDisabledState'] as (disabled: boolean) => void)(this.disabled);
+        }
+      }
+    }
+  }
+
+  ngAfterViewInit(): void {
+    if (this.pendingRetry) {
+      this.pendingRetry = false;
+      this.tryCreateRenderer();
     }
   }
 
@@ -119,10 +140,12 @@ export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
 
     try {
       this.rendererHost.clear();
+      this.componentRef = undefined;
 
       const componentRef = this.rendererHost.createComponent(
         this.registration.component
       );
+      this.componentRef = componentRef;
 
       // Inject context into the renderer
       const context: FieldRendererContext = {

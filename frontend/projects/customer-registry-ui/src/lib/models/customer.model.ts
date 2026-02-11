@@ -61,7 +61,7 @@ export interface CustomerSearchParams {
 }
 
 export interface CustomerPageResponse {
-  content: Customer[];
+  customers: Customer[];
   totalElements: number;
   totalPages: number;
   page: number;

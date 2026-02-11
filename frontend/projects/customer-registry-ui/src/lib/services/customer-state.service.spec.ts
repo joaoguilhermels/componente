@@ -26,7 +26,7 @@ describe('CustomerStateService', () => {
   };
 
   const mockPageResponse: CustomerPageResponse = {
-    content: [mockCustomer],
+    customers: [mockCustomer],
     totalElements: 1,
     totalPages: 1,
     page: 0,
@@ -175,6 +175,46 @@ describe('CustomerStateService', () => {
       expect(service.currentPage()).toBe(2);
       expect(apiMock.search).toHaveBeenCalled();
     });
+
+    it('should use new page when goToPage is called after search with explicit page (A2)', () => {
+      apiMock.search.mockReturnValue(of(mockPageResponse));
+
+      // Initial search with explicit page=5
+      service.loadCustomers({ type: 'PJ', page: 5 });
+      expect(apiMock.search).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'PJ', page: 5 })
+      );
+
+      // Navigate to page 1 — should NOT be overridden back to 5
+      apiMock.search.mockReturnValue(
+        of({ ...mockPageResponse, page: 1 })
+      );
+      service.goToPage(1);
+
+      expect(apiMock.search).toHaveBeenLastCalledWith(
+        expect.objectContaining({ type: 'PJ', page: 1 })
+      );
+    });
+
+    it('should preserve search filters when navigating pages', () => {
+      apiMock.search.mockReturnValue(of(mockPageResponse));
+
+      // First load with a type filter
+      service.loadCustomers({ type: 'PF' });
+      expect(apiMock.search).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'PF' })
+      );
+
+      // Navigate to page 2 — should retain type filter
+      apiMock.search.mockReturnValue(
+        of({ ...mockPageResponse, page: 2 })
+      );
+      service.goToPage(2);
+
+      expect(apiMock.search).toHaveBeenLastCalledWith(
+        expect.objectContaining({ type: 'PF', page: 2 })
+      );
+    });
   });
 
   describe('subscription management', () => {
@@ -201,7 +241,7 @@ describe('CustomerStateService', () => {
       expect(service.loading()).toBe(false);
 
       // First request completing late should have no effect (unsubscribed)
-      subject1.next({ ...mockPageResponse, content: [] });
+      subject1.next({ ...mockPageResponse, customers: [] });
       subject1.complete();
 
       // Customers should still be from second request

@@ -7,7 +7,7 @@ import java.util.UUID;
  * Domain event published when a customer's data is modified
  * (display name, addresses, contacts, or attributes).
  *
- * @param eventId    deterministic UUID for idempotent processing
+ * @param eventId    unique UUID for idempotent processing
  * @param customerId the updated customer's ID
  * @param occurredAt timestamp of the event
  */
@@ -23,9 +23,11 @@ public record CustomerUpdated(
     }
 
     public static CustomerUpdated of(UUID customerId) {
+        Instant occurredAt = Instant.now();
         return new CustomerUpdated(
-            UUID.nameUUIDFromBytes(("updated:" + customerId).getBytes()),
-            customerId, Instant.now()
+            UUID.nameUUIDFromBytes(
+                ("updated:" + customerId + ":" + occurredAt).getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+            customerId, occurredAt
         );
     }
 }

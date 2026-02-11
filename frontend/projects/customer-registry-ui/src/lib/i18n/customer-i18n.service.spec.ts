@@ -90,6 +90,15 @@ describe('CustomerI18nService', () => {
       });
       expect(service.translate('test.multi', 'A', 'B')).toBe('From A to B');
     });
+
+    it('should replace all occurrences of the same parameter', () => {
+      const service = createService('pt-BR', {
+        'pt-BR': { 'test.repeat': 'Delete {0}? Deleting {0} is permanent.' },
+      });
+      expect(service.translate('test.repeat', 'X')).toBe(
+        'Delete X? Deleting X is permanent.'
+      );
+    });
   });
 
   describe('onMissingKey callback', () => {

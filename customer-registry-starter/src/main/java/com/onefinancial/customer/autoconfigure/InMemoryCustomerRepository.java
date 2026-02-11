@@ -39,14 +39,14 @@ class InMemoryCustomerRepository implements CustomerRepository {
     @Override
     public Optional<Customer> findByDocument(Document document) {
         return store.values().stream()
-            .filter(c -> c.getDocument().equals(document))
+            .filter(c -> c.getDocument().number().equals(document.number()))
             .findFirst();
     }
 
     @Override
     public boolean existsByDocument(Document document) {
         return store.values().stream()
-            .anyMatch(c -> c.getDocument().equals(document));
+            .anyMatch(c -> c.getDocument().number().equals(document.number()));
     }
 
     @Override

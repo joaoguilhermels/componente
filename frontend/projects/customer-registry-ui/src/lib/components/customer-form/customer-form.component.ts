@@ -216,8 +216,11 @@ export class CustomerFormComponent implements OnInit {
     this.buildForm();
   }
 
-  onTypeChange(): void {
+  onTypeChange(resetDocument = true): void {
     const documentControl = this.form.get('document')!;
+    if (resetDocument) {
+      documentControl.reset();
+    }
     documentControl.clearValidators();
     documentControl.addValidators([Validators.required]);
 
@@ -267,7 +270,7 @@ export class CustomerFormComponent implements OnInit {
 
   onSubmit(): void {
     if (this.form.valid) {
-      this.submitForm.emit(this.form.value);
+      this.submitForm.emit(this.form.getRawValue());
     }
   }
 
@@ -317,7 +320,7 @@ export class CustomerFormComponent implements OnInit {
       document: c.document,
       displayName: c.displayName,
     });
-    this.onTypeChange();
+    this.onTypeChange(false);
 
     if (this.editMode()) {
       this.form.get('type')?.disable();

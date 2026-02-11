@@ -96,7 +96,7 @@ describe('CustomerRegistryApiClient', () => {
   describe('search', () => {
     it('should GET /customers with query params', () => {
       const pageResponse: CustomerPageResponse = {
-        content: [mockCustomer],
+        customers: [mockCustomer],
         totalElements: 1,
         totalPages: 1,
         page: 0,

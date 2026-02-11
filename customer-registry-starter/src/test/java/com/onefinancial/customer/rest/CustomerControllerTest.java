@@ -2,6 +2,7 @@ package com.onefinancial.customer.rest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.onefinancial.customer.core.exception.CustomerValidationException;
+import com.onefinancial.customer.core.exception.CustomerNotFoundException;
 import com.onefinancial.customer.core.exception.DocumentValidationException;
 import com.onefinancial.customer.core.exception.DuplicateDocumentException;
 import com.onefinancial.customer.core.exception.InvalidStatusTransitionException;
@@ -309,6 +310,30 @@ class CustomerControllerTest {
                 .andExpect(jsonPath("$.customers", hasSize(0)))
                 .andExpect(jsonPath("$.totalElements").value(0));
         }
+
+        @Test
+        @DisplayName("should return 400 for negative page number")
+        void returnBadRequestForNegativePage() throws Exception {
+            mockMvc.perform(get("/api/v1/customers")
+                    .param("page", "-1"))
+                .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("should return 400 for zero size")
+        void returnBadRequestForZeroSize() throws Exception {
+            mockMvc.perform(get("/api/v1/customers")
+                    .param("size", "0"))
+                .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("should return 400 for size exceeding 100")
+        void returnBadRequestForExcessiveSize() throws Exception {
+            mockMvc.perform(get("/api/v1/customers")
+                    .param("size", "101"))
+                .andExpect(status().isBadRequest());
+        }
     }
 
     // ─── PATCH /api/v1/customers/{id} ─────────────────────────────
@@ -430,6 +455,36 @@ class CustomerControllerTest {
         }
     }
 
+    // ─── DELETE /api/v1/customers/{id} ──────────────────────────
+
+    @Nested
+    @DisplayName("DELETE /api/v1/customers/{id}")
+    class DeleteCustomer {
+
+        @Test
+        @DisplayName("should return 204 on successful delete")
+        void shouldReturn204OnSuccessfulDelete() throws Exception {
+            UUID id = UUID.randomUUID();
+            doNothing().when(service).deleteCustomer(id);
+
+            mockMvc.perform(delete("/api/v1/customers/{id}", id))
+                .andExpect(status().isNoContent());
+
+            verify(service).deleteCustomer(id);
+        }
+
+        @Test
+        @DisplayName("should return 404 when deleting non-existent customer")
+        void shouldReturn404WhenDeletingNonExistentCustomer() throws Exception {
+            UUID id = UUID.randomUUID();
+            doThrow(new CustomerNotFoundException(id)).when(service).deleteCustomer(id);
+
+            mockMvc.perform(delete("/api/v1/customers/{id}", id))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.title").value("Customer Not Found"));
+        }
+    }
+
     // ─── i18n ───────────────────────────────────────────────────
 
     @Nested
@@ -450,6 +505,30 @@ class CustomerControllerTest {
                         """))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.detail").isString());
+        }
+    }
+
+    // ─── IllegalArgument sanitization ─────────────────────────
+
+    @Nested
+    @DisplayName("IllegalArgument sanitization")
+    class IllegalArgumentSanitization {
+
+        @Test
+        @DisplayName("should return 400 with generic message instead of leaking class paths")
+        void shouldSanitizeIllegalArgumentMessage() throws Exception {
+            when(service.register(any(Customer.class)))
+                .thenThrow(new IllegalArgumentException(
+                    "No enum constant com.onefinancial.customer.core.model.CustomerStatus.INVALID"));
+
+            mockMvc.perform(post("/api/v1/customers")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {"type":"PF","document":"52998224725","displayName":"Maria Silva"}
+                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Invalid request parameter"))
+                .andExpect(jsonPath("$.detail", not(containsString("com.onefinancial"))));
         }
     }
 }

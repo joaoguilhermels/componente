@@ -98,6 +98,16 @@ describe('CustomerFormComponent', () => {
       expect(component.form.get('document')?.hasError('cpfInvalid')).toBeFalsy();
     });
 
+    it('should clear document field when type changes (A4)', () => {
+      component.form.get('document')?.setValue('52998224725');
+      expect(component.form.get('document')?.value).toBe('52998224725');
+
+      component.form.get('type')?.setValue('PJ');
+      component.onTypeChange();
+
+      expect(component.form.get('document')?.value).toBeNull();
+    });
+
     it('should switch back to CPF validator when type changes to PF', () => {
       component.form.get('type')?.setValue('PJ');
       component.onTypeChange();
@@ -117,9 +127,9 @@ describe('CustomerFormComponent', () => {
       const spy = jest.spyOn(component.submitForm, 'emit');
 
       component.form.get('type')?.setValue('PF');
+      component.onTypeChange();
       component.form.get('document')?.setValue('52998224725');
       component.form.get('displayName')?.setValue('Maria Silva');
-      component.onTypeChange();
 
       component.onSubmit();
 
@@ -175,6 +185,32 @@ describe('CustomerFormComponent', () => {
 
       expect(component.form.get('type')?.disabled).toBe(true);
       expect(component.form.get('document')?.disabled).toBe(true);
+    });
+
+    it('should include disabled fields (type, document) in submitted value', () => {
+      fixture.componentRef.setInput('editMode', true);
+      fixture.componentRef.setInput('customer', mockCustomer);
+      fixture.detectChanges();
+
+      // Verify fields are disabled
+      expect(component.form.get('type')?.disabled).toBe(true);
+      expect(component.form.get('document')?.disabled).toBe(true);
+
+      const spy = jest.spyOn(component.submitForm, 'emit');
+      component.form.get('displayName')?.setValue('Updated Name');
+
+      // Mark form as valid by ensuring no validation errors
+      component.form.get('displayName')?.updateValueAndValidity();
+
+      component.onSubmit();
+
+      expect(spy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'PJ',
+          document: '11222333000181',
+          displayName: 'Updated Name',
+        })
+      );
     });
   });
 

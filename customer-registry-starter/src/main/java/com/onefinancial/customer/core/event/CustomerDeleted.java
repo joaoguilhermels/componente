@@ -6,7 +6,7 @@ import java.util.UUID;
 /**
  * Domain event published when a customer is deleted.
  *
- * @param eventId    deterministic UUID for idempotent processing
+ * @param eventId    unique UUID for idempotent processing
  * @param customerId the deleted customer's ID
  * @param occurredAt timestamp of the event
  */
@@ -22,9 +22,11 @@ public record CustomerDeleted(
     }
 
     public static CustomerDeleted of(UUID customerId) {
+        Instant occurredAt = Instant.now();
         return new CustomerDeleted(
-            UUID.nameUUIDFromBytes(("deleted:" + customerId).getBytes()),
-            customerId, Instant.now()
+            UUID.nameUUIDFromBytes(
+                ("deleted:" + customerId + ":" + occurredAt).getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+            customerId, occurredAt
         );
     }
 }

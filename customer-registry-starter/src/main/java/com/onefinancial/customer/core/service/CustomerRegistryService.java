@@ -15,9 +15,11 @@ import com.onefinancial.customer.core.port.CustomerEventPublisher;
 import com.onefinancial.customer.core.port.CustomerRepository;
 import com.onefinancial.customer.core.spi.CustomerEnricher;
 import com.onefinancial.customer.core.spi.CustomerValidator;
+import com.onefinancial.customer.core.spi.CustomerOperationMetrics;
 
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -39,16 +41,27 @@ public class CustomerRegistryService {
     private final List<CustomerEnricher> enrichers;
     private final CustomerRepository repository;
     private final CustomerEventPublisher eventPublisher;
+    private final Optional<CustomerOperationMetrics> metrics;
 
     public CustomerRegistryService(
             List<CustomerValidator> validators,
             List<CustomerEnricher> enrichers,
             CustomerRepository repository,
             CustomerEventPublisher eventPublisher) {
+        this(validators, enrichers, repository, eventPublisher, Optional.empty());
+    }
+
+    public CustomerRegistryService(
+            List<CustomerValidator> validators,
+            List<CustomerEnricher> enrichers,
+            CustomerRepository repository,
+            CustomerEventPublisher eventPublisher,
+            Optional<CustomerOperationMetrics> metrics) {
         this.validators = validators != null ? validators : List.of();
         this.enrichers = enrichers != null ? enrichers : List.of();
         this.repository = repository;
         this.eventPublisher = eventPublisher;
+        this.metrics = metrics != null ? metrics : Optional.empty();
     }
 
     /**
@@ -61,12 +74,19 @@ public class CustomerRegistryService {
      */
     @Transactional
     public Customer register(Customer customer) {
-        runValidators(customer);
-        checkDuplicate(customer.getDocument());
-        customer = runEnrichers(customer);
-        Customer saved = repository.save(customer);
-        eventPublisher.publish(CustomerCreated.of(saved.getId(), saved.getType()));
-        return saved;
+        long start = System.nanoTime();
+        try {
+            runValidators(customer);
+            checkDuplicate(customer.getDocument());
+            customer = runEnrichers(customer);
+            Customer saved = repository.save(customer);
+            eventPublisher.publish(CustomerCreated.of(saved.getId(), saved.getType()));
+            recordMetric("create", "success", start);
+            return saved;
+        } catch (RuntimeException ex) {
+            recordMetric("create", "error", start);
+            throw ex;
+        }
     }
 
     /**
@@ -81,10 +101,17 @@ public class CustomerRegistryService {
      */
     @Transactional
     public Customer update(Customer customer) {
-        runValidators(customer);
-        Customer saved = repository.save(customer);
-        eventPublisher.publish(CustomerUpdated.of(saved.getId()));
-        return saved;
+        long start = System.nanoTime();
+        try {
+            runValidators(customer);
+            Customer saved = repository.save(customer);
+            eventPublisher.publish(CustomerUpdated.of(saved.getId()));
+            recordMetric("update", "success", start);
+            return saved;
+        } catch (RuntimeException ex) {
+            recordMetric("update", "error", start);
+            throw ex;
+        }
     }
 
     /**
@@ -94,16 +121,23 @@ public class CustomerRegistryService {
      */
     @Transactional
     public Customer changeStatus(UUID customerId, CustomerStatus newStatus) {
-        Customer customer = repository.findById(customerId)
-            .orElseThrow(() -> new CustomerNotFoundException(customerId));
+        long start = System.nanoTime();
+        try {
+            Customer customer = repository.findById(customerId)
+                .orElseThrow(() -> new CustomerNotFoundException(customerId));
 
-        CustomerStatus previousStatus = customer.getStatus();
-        customer.transitionTo(newStatus);
+            CustomerStatus previousStatus = customer.getStatus();
+            customer.transitionTo(newStatus);
 
-        Customer saved = repository.save(customer);
-        eventPublisher.publish(
-            CustomerStatusChanged.of(saved.getId(), previousStatus, newStatus));
-        return saved;
+            Customer saved = repository.save(customer);
+            eventPublisher.publish(
+                CustomerStatusChanged.of(saved.getId(), previousStatus, newStatus));
+            recordMetric("status_change", "success", start);
+            return saved;
+        } catch (RuntimeException ex) {
+            recordMetric("status_change", "error", start);
+            throw ex;
+        }
     }
 
     /**
@@ -113,10 +147,17 @@ public class CustomerRegistryService {
      */
     @Transactional
     public void deleteCustomer(UUID customerId) {
-        repository.findById(customerId)
-            .orElseThrow(() -> new CustomerNotFoundException(customerId));
-        repository.deleteById(customerId);
-        eventPublisher.publish(CustomerDeleted.of(customerId));
+        long start = System.nanoTime();
+        try {
+            repository.findById(customerId)
+                .orElseThrow(() -> new CustomerNotFoundException(customerId));
+            repository.deleteById(customerId);
+            eventPublisher.publish(CustomerDeleted.of(customerId));
+            recordMetric("delete", "success", start);
+        } catch (RuntimeException ex) {
+            recordMetric("delete", "error", start);
+            throw ex;
+        }
     }
 
     @Transactional(readOnly = true)
@@ -163,5 +204,10 @@ public class CustomerRegistryService {
             enriched = enricher.enrich(enriched);
         }
         return enriched;
+    }
+
+    private void recordMetric(String operation, String status, long startNanos) {
+        metrics.ifPresent(m ->
+            m.recordOperation(operation, status, Duration.ofNanos(System.nanoTime() - startNanos)));
     }
 }

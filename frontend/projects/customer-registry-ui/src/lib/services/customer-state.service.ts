@@ -20,13 +20,23 @@ export class CustomerStateService implements OnDestroy {
   /** Subscription for the current detail load operation, cancelled on new request */
   private detailSub?: Subscription;
 
+  /** Last search params passed to loadCustomers, replayed on goToPage */
+  private _lastSearchParams: CustomerSearchParams = {};
+
   /** All customers in the current page (internal writable signal) */
   private readonly _customers = signal<Customer[]>([]);
 
   /** Currently selected customer (internal writable signal) */
   private readonly _selectedCustomer = signal<Customer | null>(null);
 
-  /** Whether an API operation is in progress (internal writable signal) */
+  /**
+   * Whether an API operation is in progress (internal writable signal).
+   *
+   * Note: This signal is shared between loadCustomers() and loadCustomer().
+   * If both operations are in-flight simultaneously, loading may briefly show
+   * false while one operation is still pending. Consumers displaying both
+   * list and detail views should track loading state independently.
+   */
   private readonly _loading = signal<boolean>(false);
 
   /** Last error message (internal writable signal) */
@@ -74,19 +84,21 @@ export class CustomerStateService implements OnDestroy {
 
   /** Load customers with optional search params */
   loadCustomers(params: CustomerSearchParams = {}): void {
+    const { page, size, ...filterParams } = params;
+    this._lastSearchParams = filterParams;
     this._loading.set(true);
     this._error.set(null);
 
     const searchParams: CustomerSearchParams = {
-      page: this._currentPage(),
-      size: this._pageSize(),
-      ...params,
+      ...filterParams,
+      page: page ?? this._currentPage(),
+      size: size ?? this._pageSize(),
     };
 
     this.searchSub?.unsubscribe();
     this.searchSub = this.api.search(searchParams).subscribe({
       next: (response) => {
-        this._customers.set(response.content);
+        this._customers.set(response.customers);
         this._totalCount.set(response.totalElements);
         this._currentPage.set(response.page);
         this._loading.set(false);
@@ -129,7 +141,7 @@ export class CustomerStateService implements OnDestroy {
   /** Update page and reload */
   goToPage(page: number): void {
     this._currentPage.set(page);
-    this.loadCustomers();
+    this.loadCustomers(this._lastSearchParams);
   }
 
   private extractErrorMessage(err: unknown): string {

@@ -67,7 +67,7 @@ import { Customer } from '../../models/customer.model';
           <ng-container matColumnDef="actions">
             <th mat-header-cell *matHeaderCellDef>{{ 'label.actions' | translate }}</th>
             <td mat-cell *matCellDef="let customer">
-              <button mat-icon-button (click)="onSelect(customer); $event.stopPropagation()" aria-label="View details">
+              <button mat-icon-button (click)="onSelect(customer); $event.stopPropagation()" [attr.aria-label]="'label.viewDetails' | translate">
                 <mat-icon>visibility</mat-icon>
               </button>
             </td>

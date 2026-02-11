@@ -8,7 +8,7 @@ import java.util.UUID;
 /**
  * Domain event published when a customer's lifecycle status changes.
  *
- * @param eventId    deterministic UUID for idempotent processing
+ * @param eventId    unique UUID for idempotent processing
  * @param customerId the customer whose status changed
  * @param fromStatus the previous status
  * @param toStatus   the new status
@@ -30,9 +30,11 @@ public record CustomerStatusChanged(
     }
 
     public static CustomerStatusChanged of(UUID customerId, CustomerStatus from, CustomerStatus to) {
+        Instant occurredAt = Instant.now();
         return new CustomerStatusChanged(
-            UUID.nameUUIDFromBytes(("status:" + customerId + ":" + from + ":" + to).getBytes()),
-            customerId, from, to, Instant.now()
+            UUID.nameUUIDFromBytes(
+                ("status:" + customerId + ":" + from + ":" + to + ":" + occurredAt).getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+            customerId, from, to, occurredAt
         );
     }
 }

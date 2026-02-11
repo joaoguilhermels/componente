@@ -4,6 +4,8 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 
+import com.onefinancial.customer.core.spi.CustomerOperationMetrics;
+
 import java.time.Duration;
 
 /**
@@ -21,7 +23,7 @@ import java.time.Duration;
  *   <li>{@code customer_registry_schema_migration_lock_contention_total} — counter</li>
  * </ul>
  */
-public class CustomerRegistryMetrics {
+public class CustomerRegistryMetrics implements CustomerOperationMetrics {
 
     private static final String PREFIX = "customer_registry";
 
@@ -39,6 +41,7 @@ public class CustomerRegistryMetrics {
     /**
      * Records a customer operation (create, update, delete, status_change).
      */
+    @Override
     public void recordOperation(String operation, String status, Duration duration) {
         Counter.builder(PREFIX + "_operations_total")
             .tag("operation", operation)

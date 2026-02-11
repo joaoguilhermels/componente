@@ -140,4 +140,5 @@ class CustomerEntity implements Persistable<UUID> {
     void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
 
     Long getVersion() { return version; }
+    void setVersion(Long version) { this.version = version; }
 }

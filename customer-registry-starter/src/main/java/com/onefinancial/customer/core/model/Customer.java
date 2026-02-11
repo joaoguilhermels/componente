@@ -28,6 +28,7 @@ public final class Customer {
     private Attributes attributes;
     private Instant createdAt;
     private Instant updatedAt;
+    private Long version;
 
     private Customer() {
         // Used by builder/factory only
@@ -73,7 +74,7 @@ public final class Customer {
     public static Customer reconstitute(
             UUID id, CustomerType type, Document document, String displayName,
             CustomerStatus status, List<Address> addresses, List<Contact> contacts,
-            Attributes attributes, Instant createdAt, Instant updatedAt) {
+            Attributes attributes, Instant createdAt, Instant updatedAt, Long version) {
         var customer = new Customer();
         customer.id = id;
         customer.type = type;
@@ -85,6 +86,7 @@ public final class Customer {
         customer.attributes = attributes;
         customer.createdAt = createdAt;
         customer.updatedAt = updatedAt;
+        customer.version = version;
         return customer;
     }
 
@@ -134,6 +136,7 @@ public final class Customer {
     public Attributes getAttributes() { return attributes; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+    public Long getVersion() { return version; }
 
     @Override
     public boolean equals(Object obj) {

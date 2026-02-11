@@ -22,6 +22,7 @@ final class CustomerEntityMapper {
         entity.setSchemaVersion(customer.getAttributes().schemaVersion());
         entity.setCreatedAt(customer.getCreatedAt());
         entity.setUpdatedAt(customer.getUpdatedAt());
+        entity.setVersion(customer.getVersion());
         if (isNew) {
             entity.markAsNew();
         }
@@ -61,7 +62,8 @@ final class CustomerEntityMapper {
             contacts,
             attributes,
             entity.getCreatedAt(),
-            entity.getUpdatedAt()
+            entity.getUpdatedAt(),
+            entity.getVersion()
         );
     }
 

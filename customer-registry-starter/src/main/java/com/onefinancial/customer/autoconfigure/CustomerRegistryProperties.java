@@ -15,6 +15,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *       persistence-jpa: true
  *       migrations: true
  *       publish-events: true
+ *       attributes-auto-migrate-on-startup: true
  *       observability: true
  *     migration:
  *       advisory-lock-key: 7391825001

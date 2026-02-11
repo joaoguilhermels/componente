@@ -22,7 +22,7 @@ import org.springframework.context.annotation.Bean;
  * <p>Additionally requires Micrometer on the classpath and a {@link MeterRegistry}
  * bean to register the metrics facade.</p>
  */
-@AutoConfiguration(after = CustomerRegistryCoreAutoConfiguration.class)
+@AutoConfiguration(before = CustomerRegistryCoreAutoConfiguration.class)
 @ConditionalOnProperty(
     prefix = "customer.registry",
     name = {"enabled", "features.observability"},
