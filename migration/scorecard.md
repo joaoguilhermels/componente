@@ -23,24 +23,30 @@
 
 **Total: 100% (Automated)**
 
-> **Note**: The 13 dimensions above are verified automatically by the migration CLI.
-> An additional 10 dimensions require manual/human assessment and are tracked separately
-> in the migration lessons template (`MIGRATION-LESSONS.md`):
+### Scoring: 13 Automated + 10 Manual = 23 Dimensions
+
+> **13 Automated Dimensions** (table above) are verified by the migration CLI (`migration_cli.py verify`).
+> These check structural patterns: package layout, imports, annotations, file existence, and component conventions.
+> The CLI can run in CI and produces machine-readable JSON (`--json` flag).
 >
-> | Manual Dimension | Phase |
-> |------------------|-------|
-> | Legacy analysis accuracy | Phase 0 |
-> | Tier classification correctness | Phase 0 |
-> | Domain model design quality | Phase 2 |
-> | PII masking completeness | Phase 2 |
-> | Entity-to-model mapping quality | Phase 3 |
-> | Error handling strategy | Phase 3 |
-> | Team velocity / time-to-migrate | Overall |
-> | Knowledge transfer effectiveness | Overall |
-> | Recovery prompt usage rate | Overall |
-> | Prompt first-try accuracy | Overall |
+> **10 Manual Dimensions** (table below) require human assessment and are tracked separately
+> in the migration lessons template (`MIGRATION-LESSONS.md`). These evaluate design quality,
+> domain accuracy, and team effectiveness — aspects that static analysis cannot measure.
 >
 > The CLI reports: "13/13 automated checks passing (10 manual dimensions require separate review)."
+
+| Manual Dimension | Phase | What to Assess |
+|------------------|-------|----------------|
+| Legacy analysis accuracy | Phase 0 | Did the analysis correctly identify all bounded contexts? |
+| Tier classification correctness | Phase 0 | Was the chosen tier appropriate for the service's complexity? |
+| Domain model design quality | Phase 2 | Are entities well-modeled with proper value objects and invariants? |
+| PII masking completeness | Phase 2 | Is all PII masked in toString(), events, and exceptions? |
+| Entity-to-model mapping quality | Phase 3 | Does the JPA entity mapper correctly translate between layers? |
+| Error handling strategy | Phase 3 | Are errors properly propagated without leaking internals? |
+| Team velocity / time-to-migrate | Overall | How long did each phase take vs. the tier estimate? |
+| Knowledge transfer effectiveness | Overall | Can new team members understand the migrated architecture? |
+| Recovery prompt usage rate | Overall | How often were recovery prompts needed vs. first-try success? |
+| Prompt first-try accuracy | Overall | What percentage of Copilot prompts produced correct code? |
 
 ## Phase Gates
 

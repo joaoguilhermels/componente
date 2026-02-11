@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import shutil
@@ -27,6 +28,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None  # Windows — file locking unavailable
+    logging.warning(
+        "fcntl module not available (Windows). File locking for state files is disabled; "
+        "concurrent CLI invocations may cause data corruption."
+    )
 
 import yaml
 
@@ -38,6 +48,14 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 
 REFERENCE_MARKER = "customer-registry-starter"
+
+# Pre-compiled regex patterns for frequently-used checks
+_RE_BEAN = re.compile(r"@Bean\b")
+_RE_COMB = re.compile(r"@ConditionalOnMissingBean\b")
+_RE_INTERFACE = re.compile(r"\binterface\s+(\w+)")
+_RE_STANDALONE = re.compile(r"standalone\s*:\s*true")
+_RE_ONPUSH = re.compile(r"changeDetection\s*:\s*ChangeDetectionStrategy\.OnPush")
+_RE_PUBLIC_CONFIG = re.compile(r"public\s+class\s+\w+Configuration")
 
 # Forbidden imports in core — hexagonal boundary enforcement
 FORBIDDEN_CORE_IMPORTS = [
@@ -51,8 +69,12 @@ FORBIDDEN_CORE_IMPORTS = [
 ]
 
 # Allowed exceptions — cross-cutting concerns that are permitted in core
-ALLOWED_CORE_IMPORTS = [
+# Exact matches: only this specific import is allowed (not subpackages)
+ALLOWED_CORE_IMPORTS_EXACT = {
     "org.springframework.transaction.annotation.Transactional",
+}
+# Prefix matches: any import starting with this prefix is allowed
+ALLOWED_CORE_IMPORTS_PREFIX = [
     "org.springframework.modulith",
 ]
 
@@ -320,13 +342,9 @@ class RepoDetector:
 class ScorecardChecker:
     """Runs the 13 fast scorecard checks against a detected repo."""
 
-    _methods_validated = False
-
-    def __init__(self, detector: RepoDetector):
-        if not ScorecardChecker._methods_validated:
-            _validate_dimension_methods()
-            ScorecardChecker._methods_validated = True
+    def __init__(self, detector: RepoDetector, verbose: bool = False):
         self.d = detector
+        self.verbose = verbose
         self._pkg_cache: dict[str, Optional[Path]] = {}
         self._test_pkg_cache: dict[str, Optional[Path]] = {}
 
@@ -493,18 +511,27 @@ class ScorecardChecker:
         if passed:
             detail = "No forbidden imports in core/"
         else:
-            detail = f"{len(violations)} violation(s): " + "; ".join(violations[:3])
-            if len(violations) > 3:
-                detail += f" ... (+{len(violations) - 3} more)"
+            if self.verbose:
+                detail = f"{len(violations)} violation(s): " + "; ".join(violations)
+            else:
+                detail = f"{len(violations)} violation(s): " + "; ".join(violations[:3])
+                if len(violations) > 3:
+                    detail += f" ... (+{len(violations) - 3} more)"
         return CheckResult(
             dimension="core_isolation", passed=passed, detail=detail,
             weight=dim["weight"], phase=dim["phase"], label=dim["label"],
         )
 
     def _is_forbidden_import(self, import_path: str) -> bool:
-        """Check if an import is forbidden (not in the allowed exceptions list)."""
-        for allowed in ALLOWED_CORE_IMPORTS:
-            if import_path.startswith(allowed):
+        """Check if an import is forbidden (not in the allowed exceptions list).
+
+        Checks exact matches first (e.g. Transactional), then prefix matches
+        (e.g. modulith subpackages), then forbidden prefixes.
+        """
+        if import_path in ALLOWED_CORE_IMPORTS_EXACT:
+            return False
+        for allowed_prefix in ALLOWED_CORE_IMPORTS_PREFIX:
+            if import_path.startswith(allowed_prefix):
                 return False
         for forbidden in FORBIDDEN_CORE_IMPORTS:
             if import_path.startswith(forbidden):
@@ -540,14 +567,19 @@ class ScorecardChecker:
                     comment_set = self._compute_comment_lines(lines)
                     code_lines = [ln for idx, ln in enumerate(lines) if idx not in comment_set]
                     code_content = "\n".join(code_lines)
-                    match = re.search(r"\binterface\s+(\w+)", code_content)
+                    match = _RE_INTERFACE.search(code_content)
                     if match:
                         interface_files.append(f.name)
                         interface_names.append(match.group(1))
                     else:
                         non_interface_files.append(f.name)
 
-        passed = len(interface_files) >= 1
+        # Count outbound adapter packages that typically need port interfaces.
+        # REST is excluded because it is an *inbound* adapter: it receives HTTP requests
+        # and calls core services directly (driving side). Only *outbound* adapters
+        # (persistence, events) implement core port interfaces (driven side).
+        outbound_adapter_count = sum(1 for d in ["persistence", "events"] if self._find_package_dir(d))
+        passed = len(interface_files) >= max(1, outbound_adapter_count)
 
         # Cross-reference: check that each port has at least one implementing adapter
         unimplemented = []
@@ -560,7 +592,11 @@ class ScorecardChecker:
         if unimplemented:
             detail += f" [WARNING: no adapter implements {', '.join(unimplemented)}]"
         if not passed:
-            detail = "No port interfaces found in core/port/ (files must contain 'interface' keyword)"
+            if len(interface_files) == 0:
+                detail = "No port interfaces found in core/port/ (files must contain 'interface' keyword)"
+            else:
+                detail = (f"Only {len(interface_files)} port interface(s) for {outbound_adapter_count} outbound adapter(s) "
+                          f"— need at least {outbound_adapter_count}: {', '.join(interface_files)}")
         return CheckResult(
             dimension="port_interfaces", passed=passed, detail=detail,
             weight=dim["weight"], phase=dim["phase"], label=dim["label"],
@@ -569,13 +605,16 @@ class ScorecardChecker:
     def _find_unimplemented_ports(self, interface_names: list[str]) -> list[str]:
         """Return port interface names that have no implementing class in adapter directories."""
         adapter_dirs = ["persistence", "rest", "events", "autoconfigure"]
-        # Collect all Java source content from adapter directories
+        # Collect all Java source content from adapter directories (main sources only)
         adapter_contents: list[str] = []
         for pkg in adapter_dirs:
             pkg_dir = self._find_package_dir(pkg)
             if not pkg_dir:
                 continue
             for java_file in pkg_dir.rglob("*.java"):
+                # Skip test files — only scan src/main/java paths
+                if "src/test/" in str(java_file) or "/test/" in str(java_file):
+                    continue
                 try:
                     adapter_contents.append(java_file.read_text(encoding="utf-8"))
                 except (OSError, UnicodeDecodeError):
@@ -648,14 +687,16 @@ class ScorecardChecker:
             if not config_files:
                 missing.append(pkg)
                 continue
-            # Semantic check: at least one config file must contain @Bean
+            # Semantic check: at least one public config file must contain @Bean
             has_bean = False
             for cfg in config_files:
                 try:
                     content = cfg.read_text(encoding="utf-8")
                 except (OSError, UnicodeDecodeError):
                     continue
-                if re.search(r"@Bean\b", content):
+                if not _RE_PUBLIC_CONFIG.search(content):
+                    continue  # Not a public config — don't count it
+                if _RE_BEAN.search(content):
                     has_bean = True
                     found.append(f"{pkg}/{cfg.name}")
                     break
@@ -738,8 +779,8 @@ class ScorecardChecker:
         different conditional patterns deliberately).
         """
         dim = DIMENSIONS["conditional_on_missing_bean"]
-        bean_pattern = re.compile(r"^\s*@Bean")
-        comb_pattern = re.compile(r"^\s*@ConditionalOnMissingBean")
+        bean_pattern = re.compile(r"^\s*@Bean\b")
+        comb_pattern = re.compile(r"^\s*@ConditionalOnMissingBean\b")
 
         # Only check: core auto-config + bridge configs (persistence, rest, events)
         files_to_scan = []
@@ -773,22 +814,18 @@ class ScorecardChecker:
                 if comb_pattern.match(line):
                     comb_indices.append(i)
 
-            # Greedily pair each @Bean with nearest unused @COMB within
-            # effective distance ≤ 5.  Effective distance counts only
-            # non-comment, non-blank lines between the two annotations,
-            # so Javadoc blocks between them don't inflate the distance.
-            used_combs = set()
+            # Coverage-based pairing: for each @COMB, mark all @Bean within
+            # effective distance ≤ 5 as covered.  This avoids the greedy
+            # 1:1 pairing bug where one @COMB could "steal" coverage from
+            # a @Bean that has no other nearby @COMB.
+            covered_beans = set()
+            for comb_idx in comb_indices:
+                for bean_idx in bean_indices:
+                    if self._effective_distance(comb_idx, bean_idx, lines, comment_lines) <= 5:
+                        covered_beans.add(bean_idx)
+            total_beans += len(bean_indices)
             for bean_idx in bean_indices:
-                total_beans += 1
-                candidates = sorted(
-                    (c for c in comb_indices
-                     if c not in used_combs
-                     and self._effective_distance(c, bean_idx, lines, comment_lines) <= 5),
-                    key=lambda c: abs(c - bean_idx),
-                )
-                if candidates:
-                    used_combs.add(candidates[0])
-                else:
+                if bean_idx not in covered_beans:
                     beans_without_comb.append(f"{java_file.name}:{bean_idx + 1}")
 
         matched = total_beans - len(beans_without_comb)
@@ -977,16 +1014,15 @@ class ScorecardChecker:
         standalone_count = 0
         onpush_count = 0
         total = len(component_files)
-        standalone_re = re.compile(r"standalone\s*:\s*true")
 
         for ts_file in component_files:
             try:
                 content = ts_file.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
                 continue
-            if standalone_re.search(content):
+            if _RE_STANDALONE.search(content):
                 standalone_count += 1
-            if "OnPush" in content:
+            if _RE_ONPUSH.search(content):
                 onpush_count += 1
 
         passed = standalone_count == total and onpush_count == total
@@ -1035,6 +1071,9 @@ class ScorecardChecker:
         return result
 
 
+# Validate dimension methods at import time (catches typos immediately).
+_validate_dimension_methods()
+
 # ─── StateManager ───────────────────────────────────────────────────────────
 
 class StateManager:
@@ -1048,8 +1087,23 @@ class StateManager:
         return self.state_file.is_file()
 
     def load(self) -> MigrationState:
-        with open(self.state_file, encoding="utf-8") as f:
-            data = yaml.safe_load(f)
+        lock_file = self.state_file.with_suffix(".lock")
+        try:
+            with open(lock_file, "w") as lf:
+                if fcntl is not None:
+                    fcntl.flock(lf.fileno(), fcntl.LOCK_SH)
+                try:
+                    with open(self.state_file, encoding="utf-8") as f:
+                        data = yaml.safe_load(f)
+                finally:
+                    if fcntl is not None:
+                        fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
+        except FileNotFoundError:
+            raise  # Let the caller handle missing state file
+        except OSError:
+            # Fallback: read without lock (e.g. read-only filesystem)
+            with open(self.state_file, encoding="utf-8") as f:
+                data = yaml.safe_load(f)
         if not isinstance(data, dict):
             raise ValueError(f"Invalid state file {self.state_file}: expected YAML mapping, got {type(data).__name__}")
         if "service_name" not in data or not data["service_name"]:
@@ -1060,6 +1114,18 @@ class StateManager:
                 f"Invalid state file {self.state_file}: 'phase_times' must be a mapping, "
                 f"got {type(phase_times).__name__}"
             )
+        for phase_key, phase_data in phase_times.items():
+            if not isinstance(phase_data, dict):
+                raise ValueError(
+                    f"Invalid state file {self.state_file}: phase_times['{phase_key}'] "
+                    f"must be a mapping, got {type(phase_data).__name__}"
+                )
+        current_phase = data.get("current_phase", 0)
+        if not isinstance(current_phase, int):
+            raise ValueError(
+                f"Invalid state file {self.state_file}: 'current_phase' must be an integer, "
+                f"got {type(current_phase).__name__}"
+            )
         return MigrationState(
             service_name=data["service_name"],
             base_package=data.get("base_package", ""),
@@ -1067,7 +1133,7 @@ class StateManager:
             property_prefix=data.get("property_prefix", ""),
             tier=data.get("tier", "Standard"),
             has_frontend=data.get("has_frontend", False),
-            current_phase=data.get("current_phase", 0),
+            current_phase=current_phase,
             phase_times=phase_times,
             errors_encountered=data.get("errors_encountered", []),
             prompts_applied=data.get("prompts_applied", []),
@@ -1087,8 +1153,22 @@ class StateManager:
             "errors_encountered": state.errors_encountered,
             "prompts_applied": state.prompts_applied,
         }
-        with open(self.state_file, "w", encoding="utf-8") as f:
-            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+        lock_file = self.state_file.with_suffix(".lock")
+        tmp_file = self.state_file.with_suffix(".yml.tmp")
+        try:
+            with open(lock_file, "w") as lf:
+                if fcntl is not None:
+                    fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
+                try:
+                    with open(tmp_file, "w", encoding="utf-8") as f:
+                        yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+                    tmp_file.rename(self.state_file)
+                finally:
+                    if fcntl is not None:
+                        fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
+        except BaseException:
+            tmp_file.unlink(missing_ok=True)
+            raise
 
     def create(self, service_name: str, tier: str, base_package: str = "",
                db_prefix: str = "", property_prefix: str = "", has_frontend: bool = False) -> MigrationState:
@@ -1197,11 +1277,13 @@ class WorkflowGuide:
                     print(f"  Advance to Phase {phase + 1} with: guide --phase {phase + 1}")
                 else:
                     print(f"  {GREEN}Migration complete!{RESET}")
-                # Update state
+                # Update state (preserve existing flags like gate_skipped)
                 now = datetime.now(timezone.utc).isoformat()
                 phase_key = str(phase)
                 if phase_key in state.phase_times:
                     state.phase_times[phase_key]["completed"] = now
+                else:
+                    state.phase_times[phase_key] = {"started": now, "completed": now}
                 state.current_phase = phase + 1 if phase < 5 else 5
                 next_key = str(state.current_phase)
                 if next_key not in state.phase_times and state.current_phase <= 5:
@@ -1229,11 +1311,13 @@ class WorkflowGuide:
                         f"         Use 'verify --phase {unverified_start}' to check prerequisites first.\n"
                     )
             print(f"{DIM}(Gate check skipped with --skip-gate){RESET}\n")
-            # Record that gate was skipped (audit trail)
+            # Record that gate was skipped (audit trail) and mark as completed
             now = datetime.now(timezone.utc).isoformat()
             phase_key = str(phase)
             if phase_key not in state.phase_times:
-                state.phase_times[phase_key] = {"started": now, "completed": None}
+                state.phase_times[phase_key] = {"started": now, "completed": now}
+            else:
+                state.phase_times[phase_key]["completed"] = now
             state.phase_times[phase_key]["gate_skipped"] = True
             state.phase_times[phase_key]["gate_skipped_at"] = now
             self.state_mgr.save(state)
@@ -1514,7 +1598,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
         state = state_mgr.load() if state_mgr.exists() else None
         detector = RepoDetector(target_path, state, source_root=source_root)
 
-    checker = ScorecardChecker(detector)
+    checker = ScorecardChecker(detector, verbose=getattr(args, "verbose", False))
 
     if args.phase is not None:
         if args.phase not in PHASES:
@@ -1683,6 +1767,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_verify.add_argument("--phase", type=int, help="Run checks for a single phase (1-5)")
     p_verify.add_argument("--json", action="store_true", help="Output JSON instead of terminal")
     p_verify.add_argument("--quiet", "-q", action="store_true", help="Single-line output for CI (e.g. PASS 13/13 100%%)")
+    p_verify.add_argument("--verbose", "-v", action="store_true", help="Show all violations (no truncation)")
     _add_common_target_args(p_verify)
 
     # status

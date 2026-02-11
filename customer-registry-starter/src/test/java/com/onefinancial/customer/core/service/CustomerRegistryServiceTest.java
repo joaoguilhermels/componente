@@ -17,7 +17,9 @@ import com.onefinancial.customer.core.port.CustomerRepository;
 import com.onefinancial.customer.core.spi.CustomerEnricher;
 import com.onefinancial.customer.core.spi.CustomerValidator;
 import com.onefinancial.customer.core.spi.ValidationResult;
+import com.onefinancial.customer.core.spi.CustomerOperationMetrics;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,6 +33,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -315,6 +318,94 @@ class CustomerRegistryServiceTest {
 
             assertThat(result).isEmpty();
             verify(repository).findByDocument(document);
+        }
+    }
+
+    @Nested
+    @DisplayName("Metrics integration")
+    class MetricsIntegration {
+
+        @Mock
+        private CustomerOperationMetrics metricsBean;
+
+        private CustomerRegistryService serviceWithMetrics;
+
+        @BeforeEach
+        void setUp() {
+            serviceWithMetrics = new CustomerRegistryService(
+                List.of(), List.of(), repository, eventPublisher,
+                Optional.of(metricsBean));
+        }
+
+        @Test
+        @DisplayName("should record create operation metric on register")
+        void shouldRecordMetricOnRegister() {
+            Customer customer = Customer.createPF(VALID_CPF, "Test");
+            when(repository.existsByDocument(any())).thenReturn(false);
+            when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            serviceWithMetrics.register(customer);
+
+            verify(metricsBean).recordOperation(eq("create"), eq("success"), any());
+        }
+
+        @Test
+        @DisplayName("should record update operation metric")
+        void shouldRecordMetricOnUpdate() {
+            Customer customer = Customer.createPF(VALID_CPF, "Test");
+            when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            serviceWithMetrics.update(customer);
+
+            verify(metricsBean).recordOperation(eq("update"), eq("success"), any());
+        }
+
+        @Test
+        @DisplayName("should record error metric on failed register")
+        void shouldRecordErrorMetricOnFailedRegister() {
+            Customer customer = Customer.createPF(VALID_CPF, "Test");
+            when(repository.existsByDocument(any())).thenReturn(true);
+
+            assertThatThrownBy(() -> serviceWithMetrics.register(customer))
+                .isInstanceOf(DuplicateDocumentException.class);
+
+            verify(metricsBean).recordOperation(eq("create"), eq("error"), any());
+        }
+
+        @Test
+        @DisplayName("should record delete operation metric")
+        void shouldRecordMetricOnDelete() {
+            Customer customer = Customer.createPF(VALID_CPF, "Test");
+            when(repository.findById(customer.getId())).thenReturn(Optional.of(customer));
+
+            serviceWithMetrics.deleteCustomer(customer.getId());
+
+            verify(metricsBean).recordOperation(eq("delete"), eq("success"), any());
+        }
+
+        @Test
+        @DisplayName("should record status_change operation metric")
+        void shouldRecordMetricOnStatusChange() {
+            Customer customer = Customer.createPF(VALID_CPF, "Test");
+            when(repository.findById(customer.getId())).thenReturn(Optional.of(customer));
+            when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            serviceWithMetrics.changeStatus(customer.getId(), CustomerStatus.ACTIVE);
+
+            verify(metricsBean).recordOperation(eq("status_change"), eq("success"), any());
+        }
+
+        @Test
+        @DisplayName("should not fail when metrics are absent")
+        void shouldNotFailWithoutMetrics() {
+            // service without metrics (default constructor)
+            Customer customer = Customer.createPF(VALID_CPF, "Test");
+            when(repository.existsByDocument(any())).thenReturn(false);
+            when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            service.register(customer);
+
+            // No exception — metrics are optional
         }
     }
 }

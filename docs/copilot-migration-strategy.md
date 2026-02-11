@@ -225,6 +225,13 @@ Create the package structure, marker class, and architectural gate tests.
 - [ ] `ModulithStructureTest` references the correct marker class
 - [ ] Build configuration uses Docker (not local Java/Node)
 
+### CLI Verification
+
+```bash
+# Run automated scorecard checks for Phase 1
+python3 scripts/migration_cli.py verify --phase 1 --target ./target
+```
+
 ### After This Phase
 
 Record in `target/MIGRATION-LESSONS.md`, Phase 1 section.
@@ -273,6 +280,13 @@ grep -r "import jakarta\.\|import org\.springframework\.data\.\|import org\.spri
 - [ ] Service has no Spring stereotype annotations
 - [ ] Unit tests pass without Spring context
 
+### CLI Verification
+
+```bash
+# Run automated scorecard checks for Phase 2
+python3 scripts/migration_cli.py verify --phase 2 --target ./target
+```
+
 ### After This Phase
 
 Record in `target/MIGRATION-LESSONS.md`, Phase 2 section. Pay special attention to
@@ -318,6 +332,13 @@ Create infrastructure adapters with bridge configuration pattern.
 - [ ] `@JdbcTypeCode(SqlTypes.JSON)` used for JSONB (not `@Convert`)
 - [ ] `@BatchSize(size=25)` on `@OneToMany` collections
 - [ ] No PII in events
+
+### CLI Verification
+
+```bash
+# Run automated scorecard checks for Phase 3
+python3 scripts/migration_cli.py verify --phase 3 --target ./target
+```
 
 ### After This Phase
 
@@ -370,6 +391,13 @@ grep -A3 '@ConditionalOnProperty' target/src/main/java/**/autoconfigure/*AutoCon
 - [ ] Structured header comments on all auto-config classes
 - [ ] Fallback beans exist (in-memory repo, no-op publisher)
 
+### CLI Verification
+
+```bash
+# Run automated scorecard checks for Phase 4
+python3 scripts/migration_cli.py verify --phase 4 --target ./target
+```
+
 ### After This Phase
 
 Record in `target/MIGRATION-LESSONS.md`, Phase 4 section.
@@ -409,6 +437,16 @@ docker compose -f target/docker/docker-compose.yml run --rm node-build \
 - [ ] CSS custom properties use `--<prefix>-*` naming
 - [ ] No `@Input()` named `formControl`
 - [ ] `public-api.ts` has at least one export
+
+### CLI Verification
+
+```bash
+# Run automated scorecard checks for Phase 5
+python3 scripts/migration_cli.py verify --phase 5 --target ./target
+
+# Or run all phases at once for final verification
+python3 scripts/migration_cli.py verify --target ./target
+```
 
 ### After This Phase
 

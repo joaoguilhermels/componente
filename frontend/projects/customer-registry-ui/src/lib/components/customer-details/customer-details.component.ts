@@ -3,7 +3,7 @@ import {
   Component,
   EventEmitter,
   inject,
-  Input,
+  input,
   Output,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -30,14 +30,14 @@ import { Customer } from '../../models/customer.model';
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    @if (customer) {
+    @if (customer(); as c) {
       <mat-card class="crui-details-card">
         <mat-card-header>
-          <mat-card-title>{{ customer.displayName }}</mat-card-title>
+          <mat-card-title>{{ c.displayName }}</mat-card-title>
           <mat-card-subtitle>
-            {{ 'customer.type.' + customer.type | translate }} &mdash;
-            <span class="crui-status-badge crui-status-{{ customer.status | lowercase }}">
-              {{ 'customer.status.' + customer.status | translate }}
+            {{ 'customer.type.' + c.type | translate }} &mdash;
+            <span class="crui-status-badge crui-status-{{ c.status | lowercase }}">
+              {{ 'customer.status.' + c.status | translate }}
             </span>
           </mat-card-subtitle>
         </mat-card-header>
@@ -46,22 +46,22 @@ import { Customer } from '../../models/customer.model';
           <div class="crui-detail-grid">
             <div class="crui-detail-field">
               <span class="crui-detail-label">{{ 'field.document' | translate }}</span>
-              <span class="crui-detail-value">{{ customer.document }}</span>
+              <span class="crui-detail-value">{{ c.document }}</span>
             </div>
             <div class="crui-detail-field">
               <span class="crui-detail-label">{{ 'field.createdAt' | translate }}</span>
-              <span class="crui-detail-value">{{ customer.createdAt | date:'medium' }}</span>
+              <span class="crui-detail-value">{{ c.createdAt | date:'medium' }}</span>
             </div>
             <div class="crui-detail-field">
               <span class="crui-detail-label">{{ 'field.updatedAt' | translate }}</span>
-              <span class="crui-detail-value">{{ customer.updatedAt | date:'medium' }}</span>
+              <span class="crui-detail-value">{{ c.updatedAt | date:'medium' }}</span>
             </div>
           </div>
 
-          @if (showAddresses && customer.addresses.length > 0) {
+          @if (showAddresses && c.addresses.length > 0) {
             <mat-divider></mat-divider>
             <h3 class="crui-section-title">{{ 'field.addresses' | translate }}</h3>
-            @for (address of customer.addresses; track address.id) {
+            @for (address of c.addresses; track address.id) {
               <div class="crui-address-item">
                 <span>{{ address.street }}, {{ address.number }}</span>
                 @if (address.complement) {
@@ -75,10 +75,10 @@ import { Customer } from '../../models/customer.model';
             }
           }
 
-          @if (showContacts && customer.contacts.length > 0) {
+          @if (showContacts && c.contacts.length > 0) {
             <mat-divider></mat-divider>
             <h3 class="crui-section-title">{{ 'field.contacts' | translate }}</h3>
-            @for (contact of customer.contacts; track contact.id) {
+            @for (contact of c.contacts; track contact.id) {
               <div class="crui-contact-item">
                 <mat-chip-set>
                   <mat-chip [highlighted]="contact.primary">
@@ -94,7 +94,7 @@ import { Customer } from '../../models/customer.model';
         </mat-card-content>
 
         <mat-card-actions align="end">
-          <button mat-button (click)="edit.emit(customer)">
+          <button mat-button (click)="edit.emit(c)">
             <mat-icon>edit</mat-icon>
             {{ 'label.edit' | translate }}
           </button>
@@ -151,7 +151,7 @@ export class CustomerDetailsComponent {
   private readonly config = inject(CUSTOMER_REGISTRY_UI_CONFIG);
 
   /** The customer to display. When null, the component renders nothing. */
-  @Input() customer: Customer | null = null;
+  readonly customer = input<Customer | null>(null);
 
   /** Emits the customer when the user clicks the edit button */
   @Output() readonly edit = new EventEmitter<Customer>();
@@ -159,12 +159,18 @@ export class CustomerDetailsComponent {
   /** Emits when the user clicks the back button */
   @Output() readonly back = new EventEmitter<void>();
 
-  /** Whether the addresses section is enabled by the feature flag */
+  /**
+   * Whether the addresses section is enabled by the `addresses` feature flag.
+   * Config is injected once via `useValue`; runtime changes are not reflected.
+   */
   get showAddresses(): boolean {
     return this.config.features.addresses;
   }
 
-  /** Whether the contacts section is enabled by the feature flag */
+  /**
+   * Whether the contacts section is enabled by the `contacts` feature flag.
+   * Config is injected once via `useValue`; runtime changes are not reflected.
+   */
   get showContacts(): boolean {
     return this.config.features.contacts;
   }

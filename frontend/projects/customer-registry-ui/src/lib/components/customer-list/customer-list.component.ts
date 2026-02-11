@@ -2,7 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   EventEmitter,
-  Input,
+  input,
   Output,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -30,15 +30,15 @@ import { Customer } from '../../models/customer.model';
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    @if (loading) {
+    @if (loading()) {
       <mat-progress-bar mode="indeterminate"></mat-progress-bar>
     }
 
     <div class="crui-list-container">
-      @if (!loading && customers.length === 0) {
+      @if (!loading() && customers().length === 0) {
         <p class="crui-no-results">{{ 'label.noResults' | translate }}</p>
       } @else {
-        <table mat-table [dataSource]="customers" matSort (matSortChange)="onSort($event)" class="crui-table">
+        <table mat-table [dataSource]="customers()" matSort (matSortChange)="onSort($event)" class="crui-table">
 
           <ng-container matColumnDef="type">
             <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'field.type' | translate }}</th>
@@ -67,22 +67,22 @@ import { Customer } from '../../models/customer.model';
           <ng-container matColumnDef="actions">
             <th mat-header-cell *matHeaderCellDef>{{ 'label.actions' | translate }}</th>
             <td mat-cell *matCellDef="let customer">
-              <button mat-icon-button (click)="onSelect(customer)" aria-label="View details">
+              <button mat-icon-button (click)="onSelect(customer); $event.stopPropagation()" [attr.aria-label]="'label.viewDetails' | translate">
                 <mat-icon>visibility</mat-icon>
               </button>
             </td>
           </ng-container>
 
-          <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-          <tr mat-row *matRowDef="let row; columns: displayedColumns;"
+          <tr mat-header-row *matHeaderRowDef="displayedColumns()"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns();"
               (click)="onSelect(row)"
               class="crui-clickable-row"></tr>
         </table>
 
         <mat-paginator
-          [length]="totalCount"
-          [pageSize]="pageSize"
-          [pageIndex]="pageIndex"
+          [length]="totalCount()"
+          [pageSize]="pageSize()"
+          [pageIndex]="pageIndex()"
           [pageSizeOptions]="[10, 20, 50]"
           (page)="onPage($event)"
           showFirstLastButtons>
@@ -122,22 +122,22 @@ import { Customer } from '../../models/customer.model';
 })
 export class CustomerListComponent {
   /** Array of customers to display in the table. Default: empty array. */
-  @Input() customers: Customer[] = [];
+  readonly customers = input<Customer[]>([]);
 
   /** Total number of customers (used by the paginator). Default: 0. */
-  @Input() totalCount = 0;
+  readonly totalCount = input(0);
 
   /** Number of customers per page. Default: 20. */
-  @Input() pageSize = 20;
+  readonly pageSize = input(20);
 
   /** Current page index (0-based). Default: 0. */
-  @Input() pageIndex = 0;
+  readonly pageIndex = input(0);
 
   /** Whether a loading indicator should be shown. Default: false. */
-  @Input() loading = false;
+  readonly loading = input(false);
 
   /** Column keys to display. Default: ['type', 'document', 'displayName', 'status', 'actions']. */
-  @Input() displayedColumns: string[] = ['type', 'document', 'displayName', 'status', 'actions'];
+  readonly displayedColumns = input<string[]>(['type', 'document', 'displayName', 'status', 'actions']);
 
   /** Emits a PageEvent when the user navigates to a different page */
   @Output() readonly pageChange = new EventEmitter<PageEvent>();

@@ -15,9 +15,13 @@ import com.onefinancial.customer.core.port.CustomerEventPublisher;
 import com.onefinancial.customer.core.port.CustomerRepository;
 import com.onefinancial.customer.core.spi.CustomerEnricher;
 import com.onefinancial.customer.core.spi.CustomerValidator;
+import com.onefinancial.customer.core.spi.CustomerOperationMetrics;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -31,53 +35,85 @@ import java.util.UUID;
  * the auto-configuration layer, allowing it to be tested in isolation.
  * Transaction boundaries are applied via Spring AOP proxying.</p>
  */
-// Architecture note: No @Service annotation — wired by auto-config
-// (@ConditionalOnMissingBean) so host apps can provide an alternative implementation.
 public class CustomerRegistryService {
+
+    private static final Logger log = LoggerFactory.getLogger(CustomerRegistryService.class);
 
     private final List<CustomerValidator> validators;
     private final List<CustomerEnricher> enrichers;
     private final CustomerRepository repository;
     private final CustomerEventPublisher eventPublisher;
+    private final Optional<CustomerOperationMetrics> metrics;
 
     public CustomerRegistryService(
             List<CustomerValidator> validators,
             List<CustomerEnricher> enrichers,
             CustomerRepository repository,
             CustomerEventPublisher eventPublisher) {
+        this(validators, enrichers, repository, eventPublisher, Optional.empty());
+    }
+
+    public CustomerRegistryService(
+            List<CustomerValidator> validators,
+            List<CustomerEnricher> enrichers,
+            CustomerRepository repository,
+            CustomerEventPublisher eventPublisher,
+            Optional<CustomerOperationMetrics> metrics) {
         this.validators = validators != null ? validators : List.of();
         this.enrichers = enrichers != null ? enrichers : List.of();
         this.repository = repository;
         this.eventPublisher = eventPublisher;
+        this.metrics = metrics != null ? metrics : Optional.empty();
     }
 
     /**
      * Registers a new customer through the full pipeline.
      *
-     * @param customer the customer to register (must be in DRAFT status)
+     * @param customer the customer to register (typically in DRAFT status; validators may enforce this)
      * @return the persisted customer
      * @throws CustomerValidationException if any validator rejects the customer
      * @throws DuplicateDocumentException if the document already exists
      */
     @Transactional
     public Customer register(Customer customer) {
-        runValidators(customer);
-        checkDuplicate(customer.getDocument());
-        customer = runEnrichers(customer);
-        Customer saved = repository.save(customer);
-        eventPublisher.publish(CustomerCreated.of(saved.getId(), saved.getType()));
-        return saved;
+        long start = System.nanoTime();
+        try {
+            runValidators(customer);
+            checkDuplicate(customer.getDocument());
+            customer = runEnrichers(customer);
+            Customer saved = repository.save(customer);
+            eventPublisher.publish(CustomerCreated.of(saved.getId(), saved.getType()));
+            recordMetric("create", "success", start);
+            return saved;
+        } catch (RuntimeException ex) {
+            recordMetric("create", "error", start);
+            throw ex;
+        }
     }
 
     /**
      * Updates an existing customer's data.
+     *
+     * <p>Note: Document uniqueness is enforced by the database constraint, not by
+     * application-level duplicate checking. If the document field is modified to
+     * conflict with another customer, a database constraint violation will be thrown
+     * rather than a {@link DuplicateDocumentException}. This is acceptable because
+     * document changes on existing customers are uncommon and the REST layer
+     * disables document editing.</p>
      */
     @Transactional
     public Customer update(Customer customer) {
-        runValidators(customer);
-        Customer saved = repository.save(customer);
-        eventPublisher.publish(CustomerUpdated.of(saved.getId()));
-        return saved;
+        long start = System.nanoTime();
+        try {
+            runValidators(customer);
+            Customer saved = repository.save(customer);
+            eventPublisher.publish(CustomerUpdated.of(saved.getId()));
+            recordMetric("update", "success", start);
+            return saved;
+        } catch (RuntimeException ex) {
+            recordMetric("update", "error", start);
+            throw ex;
+        }
     }
 
     /**
@@ -87,16 +123,23 @@ public class CustomerRegistryService {
      */
     @Transactional
     public Customer changeStatus(UUID customerId, CustomerStatus newStatus) {
-        Customer customer = repository.findById(customerId)
-            .orElseThrow(() -> new CustomerNotFoundException(customerId));
+        long start = System.nanoTime();
+        try {
+            Customer customer = repository.findById(customerId)
+                .orElseThrow(() -> new CustomerNotFoundException(customerId));
 
-        CustomerStatus previousStatus = customer.getStatus();
-        customer.transitionTo(newStatus);
+            CustomerStatus previousStatus = customer.getStatus();
+            customer.transitionTo(newStatus);
 
-        Customer saved = repository.save(customer);
-        eventPublisher.publish(
-            CustomerStatusChanged.of(saved.getId(), previousStatus, newStatus));
-        return saved;
+            Customer saved = repository.save(customer);
+            eventPublisher.publish(
+                CustomerStatusChanged.of(saved.getId(), previousStatus, newStatus));
+            recordMetric("status_change", "success", start);
+            return saved;
+        } catch (RuntimeException ex) {
+            recordMetric("status_change", "error", start);
+            throw ex;
+        }
     }
 
     /**
@@ -106,10 +149,17 @@ public class CustomerRegistryService {
      */
     @Transactional
     public void deleteCustomer(UUID customerId) {
-        repository.findById(customerId)
-            .orElseThrow(() -> new CustomerNotFoundException(customerId));
-        repository.deleteById(customerId);
-        eventPublisher.publish(CustomerDeleted.of(customerId));
+        long start = System.nanoTime();
+        try {
+            repository.findById(customerId)
+                .orElseThrow(() -> new CustomerNotFoundException(customerId));
+            repository.deleteById(customerId);
+            eventPublisher.publish(CustomerDeleted.of(customerId));
+            recordMetric("delete", "success", start);
+        } catch (RuntimeException ex) {
+            recordMetric("delete", "error", start);
+            throw ex;
+        }
     }
 
     @Transactional(readOnly = true)
@@ -156,5 +206,14 @@ public class CustomerRegistryService {
             enriched = enricher.enrich(enriched);
         }
         return enriched;
+    }
+
+    private void recordMetric(String operation, String status, long startNanos) {
+        try {
+            metrics.ifPresent(m ->
+                m.recordOperation(operation, status, Duration.ofNanos(System.nanoTime() - startNanos)));
+        } catch (RuntimeException metricsEx) {
+            log.warn("Failed to record metric for operation '{}': {}", operation, metricsEx.getMessage());
+        }
     }
 }

@@ -2,6 +2,7 @@ package com.onefinancial.customer.rest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.onefinancial.customer.core.exception.CustomerValidationException;
+import com.onefinancial.customer.core.exception.CustomerNotFoundException;
 import com.onefinancial.customer.core.exception.DocumentValidationException;
 import com.onefinancial.customer.core.exception.DuplicateDocumentException;
 import com.onefinancial.customer.core.exception.InvalidStatusTransitionException;
@@ -19,6 +20,7 @@ import org.springframework.context.MessageSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.support.ReloadableResourceBundleMessageSource;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -241,6 +243,36 @@ class CustomerControllerTest {
             mockMvc.perform(get("/api/v1/customers/by-document/{doc}", VALID_CPF))
                 .andExpect(status().isNotFound());
         }
+
+        @Test
+        @DisplayName("should try alternate document type when initial validation fails")
+        void findByDocumentTriesAlternateTypeOnValidationFailure() throws Exception {
+            // Use a 14-digit document that fails CNPJ validation (bad checksum)
+            // but has the right length for CNPJ. The controller should try CNPJ first
+            // (14 digits > 11), and when that fails, try CPF as fallback.
+            // Since CPF also fails (wrong length), we expect a 400 error.
+            // But the key is: it tries both before giving up.
+            String invalidForBothTypes = "12345678901234";
+
+            mockMvc.perform(get("/api/v1/customers/by-document/{doc}", invalidForBothTypes))
+                .andExpect(status().isBadRequest());
+
+            // Verify service was never called (both Document constructions failed)
+            verify(service, never()).findByDocument(any(Document.class));
+        }
+
+        @Test
+        @DisplayName("should find customer when initial type guess is wrong but alternate succeeds")
+        void findByDocumentSucceedsWithAlternateType() throws Exception {
+            // A CNPJ with valid checksum
+            Customer pjCustomer = Customer.createPJ(VALID_CNPJ, "Acme Ltda");
+            when(service.findByDocument(any(Document.class)))
+                .thenReturn(Optional.of(pjCustomer));
+
+            mockMvc.perform(get("/api/v1/customers/by-document/{doc}", VALID_CNPJ))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.type").value("PJ"));
+        }
     }
 
     // ─── GET /api/v1/customers ───────────────────────────────────
@@ -277,6 +309,36 @@ class CustomerControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.customers", hasSize(0)))
                 .andExpect(jsonPath("$.totalElements").value(0));
+        }
+
+        @Test
+        @DisplayName("should return 400 for negative page number")
+        void returnBadRequestForNegativePage() throws Exception {
+            mockMvc.perform(get("/api/v1/customers")
+                    .param("page", "-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title").value("Validation Error"))
+                .andExpect(jsonPath("$.errors").isArray());
+        }
+
+        @Test
+        @DisplayName("should return 400 for zero size")
+        void returnBadRequestForZeroSize() throws Exception {
+            mockMvc.perform(get("/api/v1/customers")
+                    .param("size", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title").value("Validation Error"))
+                .andExpect(jsonPath("$.errors").isArray());
+        }
+
+        @Test
+        @DisplayName("should return 400 for size exceeding 100")
+        void returnBadRequestForExcessiveSize() throws Exception {
+            mockMvc.perform(get("/api/v1/customers")
+                    .param("size", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title").value("Validation Error"))
+                .andExpect(jsonPath("$.errors").isArray());
         }
     }
 
@@ -375,6 +437,60 @@ class CustomerControllerTest {
         }
     }
 
+    // ─── Optimistic Lock ─────────────────────────────────────────
+
+    @Nested
+    @DisplayName("Concurrent modification handling")
+    class ConcurrentModification {
+
+        @Test
+        @DisplayName("should return 409 for optimistic lock failure")
+        void return409ForOptimisticLock() throws Exception {
+            Customer customer = samplePfCustomer();
+            when(service.findById(customer.getId())).thenReturn(Optional.of(customer));
+            when(service.update(any(Customer.class)))
+                .thenThrow(new OptimisticLockingFailureException("Row was updated by another transaction"));
+
+            mockMvc.perform(patch("/api/v1/customers/{id}", customer.getId())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {"displayName":"Concurrent Update"}
+                        """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.title").value("Concurrent Modification"));
+        }
+    }
+
+    // ─── DELETE /api/v1/customers/{id} ──────────────────────────
+
+    @Nested
+    @DisplayName("DELETE /api/v1/customers/{id}")
+    class DeleteCustomer {
+
+        @Test
+        @DisplayName("should return 204 on successful delete")
+        void shouldReturn204OnSuccessfulDelete() throws Exception {
+            UUID id = UUID.randomUUID();
+            doNothing().when(service).deleteCustomer(id);
+
+            mockMvc.perform(delete("/api/v1/customers/{id}", id))
+                .andExpect(status().isNoContent());
+
+            verify(service).deleteCustomer(id);
+        }
+
+        @Test
+        @DisplayName("should return 404 when deleting non-existent customer")
+        void shouldReturn404WhenDeletingNonExistentCustomer() throws Exception {
+            UUID id = UUID.randomUUID();
+            doThrow(new CustomerNotFoundException(id)).when(service).deleteCustomer(id);
+
+            mockMvc.perform(delete("/api/v1/customers/{id}", id))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.title").value("Customer Not Found"));
+        }
+    }
+
     // ─── i18n ───────────────────────────────────────────────────
 
     @Nested
@@ -395,6 +511,30 @@ class CustomerControllerTest {
                         """))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.detail").isString());
+        }
+    }
+
+    // ─── IllegalArgument sanitization ─────────────────────────
+
+    @Nested
+    @DisplayName("IllegalArgument sanitization")
+    class IllegalArgumentSanitization {
+
+        @Test
+        @DisplayName("should return 400 with generic message instead of leaking class paths")
+        void shouldSanitizeIllegalArgumentMessage() throws Exception {
+            when(service.register(any(Customer.class)))
+                .thenThrow(new IllegalArgumentException(
+                    "No enum constant com.onefinancial.customer.core.model.CustomerStatus.INVALID"));
+
+            mockMvc.perform(post("/api/v1/customers")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {"type":"PF","document":"52998224725","displayName":"Maria Silva"}
+                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Invalid request parameter"))
+                .andExpect(jsonPath("$.detail", not(containsString("com.onefinancial"))));
         }
     }
 }

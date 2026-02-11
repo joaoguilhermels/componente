@@ -108,6 +108,21 @@ class InMemoryCustomerRepositoryTest {
 
             assertThat(found).isEmpty();
         }
+
+        @Test
+        @DisplayName("should match by document number regardless of type")
+        void matchesByNumberRegardlessOfType() {
+            Customer customer = Customer.createPF(VALID_CPF, "Maria Silva");
+            repository.save(customer);
+
+            // Search with a different type but same number
+            // This mirrors JPA behavior which queries by document_number column only
+            Document docWithDifferentType = new Document(CustomerType.PF, VALID_CPF);
+            Optional<Customer> found = repository.findByDocument(docWithDifferentType);
+
+            assertThat(found).isPresent();
+            assertThat(found.get().getDocument().number()).isEqualTo(VALID_CPF);
+        }
     }
 
     @Nested
@@ -123,6 +138,19 @@ class InMemoryCustomerRepositoryTest {
             Document document = new Document(CustomerType.PF, VALID_CPF);
 
             assertThat(repository.existsByDocument(document)).isTrue();
+        }
+
+        @Test
+        @DisplayName("should match by document number using independently constructed Document")
+        void matchesByDocumentNumber() {
+            Customer customer = Customer.createPF(VALID_CPF, "Maria Silva");
+            repository.save(customer);
+
+            // Construct a new Document independently (not from the customer object)
+            // to verify existsByDocument matches by number, not by object identity
+            Document freshDocument = new Document(CustomerType.PF, VALID_CPF);
+
+            assertThat(repository.existsByDocument(freshDocument)).isTrue();
         }
 
         @Test

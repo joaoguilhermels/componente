@@ -34,8 +34,7 @@ describe('CustomerSearchComponent', () => {
   it('should emit search params on search', () => {
     const spy = jest.spyOn(component.search, 'emit');
 
-    component.searchType = 'PF';
-    component.searchDocument = '12345678901';
+    component.searchForm.patchValue({ type: 'PF', document: '12345678901' });
     component.onSearch();
 
     expect(spy).toHaveBeenCalledWith({
@@ -47,9 +46,11 @@ describe('CustomerSearchComponent', () => {
   it('should omit empty fields from search params', () => {
     const spy = jest.spyOn(component.search, 'emit');
 
-    component.searchType = undefined;
-    component.searchDocument = '';
-    component.searchDisplayName = '  ';
+    component.searchForm.patchValue({
+      type: undefined,
+      document: '',
+      displayName: '  ',
+    });
     component.onSearch();
 
     expect(spy).toHaveBeenCalledWith({});
@@ -58,17 +59,19 @@ describe('CustomerSearchComponent', () => {
   it('should reset all fields on reset', () => {
     const resetSpy = jest.spyOn(component.reset, 'emit');
 
-    component.searchType = 'PJ';
-    component.searchDocument = '123';
-    component.searchDisplayName = 'Test';
-    component.searchStatus = 'ACTIVE';
+    component.searchForm.patchValue({
+      type: 'PJ',
+      document: '123',
+      displayName: 'Test',
+      status: 'ACTIVE',
+    });
 
     component.onReset();
 
-    expect(component.searchType).toBeUndefined();
-    expect(component.searchDocument).toBe('');
-    expect(component.searchDisplayName).toBe('');
-    expect(component.searchStatus).toBeUndefined();
+    // Verify empty search params after reset
+    const spy = jest.spyOn(component.search, 'emit');
+    component.onSearch();
+    expect(spy).toHaveBeenCalledWith({});
     expect(resetSpy).toHaveBeenCalled();
   });
 

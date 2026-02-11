@@ -17,8 +17,11 @@ import javax.sql.DataSource;
  * <p>Activated when {@code customer.registry.features.persistence-jpa=true}.
  * Imports the JPA entity/repository setup from the persistence module and
  * configures a dedicated Liquibase instance with {@code cr_} prefixed tracking tables.</p>
+ *
+ * <p>ORDERING: Runs BEFORE {@link CustomerRegistryCoreAutoConfiguration} so the JPA
+ * repository bean registers before the in-memory fallback ({@code @ConditionalOnMissingBean}).</p>
  */
-@AutoConfiguration(after = CustomerRegistryCoreAutoConfiguration.class)
+@AutoConfiguration(before = CustomerRegistryCoreAutoConfiguration.class)
 @ConditionalOnProperty(
     prefix = "customer.registry",
     name = {"enabled", "features.persistence-jpa"},
@@ -29,7 +32,8 @@ public class CustomerRegistryPersistenceAutoConfiguration {
 
     @Bean("customerRegistryLiquibase")
     @ConditionalOnProperty(
-        name = "customer.registry.features.migrations",
+        prefix = "customer.registry",
+        name = {"enabled", "features.migrations"},
         havingValue = "true"
     )
     @ConditionalOnClass(SpringLiquibase.class)

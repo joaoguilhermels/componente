@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -138,11 +139,33 @@ class CustomerExceptionHandler {
         return problem;
     }
 
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    ProblemDetail handleOptimisticLock(OptimisticLockingFailureException ex) {
+        log.warn("Concurrent modification detected: {}", ex.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.CONFLICT, "The resource was modified by another request. Please retry.");
+        problem.setTitle("Concurrent Modification");
+        return problem;
+    }
+
+    @ExceptionHandler(jakarta.validation.ConstraintViolationException.class)
+    ProblemDetail handleConstraintViolation(jakarta.validation.ConstraintViolationException ex) {
+        List<String> errors = ex.getConstraintViolations().stream()
+            .map(v -> v.getPropertyPath() + ": " + v.getMessage())
+            .toList();
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_REQUEST, String.join("; ", errors));
+        problem.setTitle("Validation Error");
+        problem.setProperty("errors", errors);
+        return problem;
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     ProblemDetail handleIllegalArgument(IllegalArgumentException ex) {
         log.warn("Invalid argument rejected: {}", ex.getMessage());
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
-            HttpStatus.BAD_REQUEST, ex.getMessage());
+            HttpStatus.BAD_REQUEST, "Invalid request parameter");
         problem.setTitle("Bad Request");
         return problem;
     }

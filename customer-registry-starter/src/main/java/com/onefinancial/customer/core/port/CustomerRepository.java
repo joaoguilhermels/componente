@@ -26,9 +26,13 @@ public interface CustomerRepository {
 
     /**
      * @deprecated Use {@link #findAll(int, int)} for paginated results.
+     * This method loads ALL customers into memory and may cause OutOfMemoryError
+     * on datasets with more than ~100k rows. Will be removed in a future version.
      */
     @Deprecated
-    List<Customer> findAll();
+    default List<Customer> findAll() {
+        return findAll(0, Integer.MAX_VALUE).customers();
+    }
 
     /**
      * Returns a page of customers.

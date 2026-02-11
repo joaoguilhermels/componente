@@ -306,7 +306,7 @@ class AttributeMigrationServiceIntegrationTest {
         try (Connection lockConn = dataSource.getConnection();
              PreparedStatement ps = lockConn.prepareStatement(
                  "SELECT pg_try_advisory_lock(?)")) {
-            ps.setLong(1, PostgresAdvisoryLock.LOCK_KEY);
+            ps.setLong(1, PostgresAdvisoryLock.DEFAULT_LOCK_KEY);
             ps.execute();
 
             var service = new AttributeMigrationService(
@@ -319,7 +319,7 @@ class AttributeMigrationServiceIntegrationTest {
             // Release lock
             try (PreparedStatement unlock = lockConn.prepareStatement(
                      "SELECT pg_advisory_unlock(?)")) {
-                unlock.setLong(1, PostgresAdvisoryLock.LOCK_KEY);
+                unlock.setLong(1, PostgresAdvisoryLock.DEFAULT_LOCK_KEY);
                 unlock.execute();
             }
         }

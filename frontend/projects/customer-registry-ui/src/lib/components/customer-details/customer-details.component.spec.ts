@@ -4,7 +4,7 @@ import { CustomerDetailsComponent } from './customer-details.component';
 import { Customer } from '../../models/customer.model';
 import { CustomerI18nService } from '../../i18n/customer-i18n.service';
 import { CUSTOMER_REGISTRY_UI_CONFIG, CUSTOMER_I18N_OVERRIDES } from '../../tokens';
-import { DEFAULT_CONFIG } from '../../models/config.model';
+import { CustomerRegistryUiConfig, DEFAULT_CONFIG } from '../../models/config.model';
 
 describe('CustomerDetailsComponent', () => {
   let component: CustomerDetailsComponent;
@@ -61,7 +61,7 @@ describe('CustomerDetailsComponent', () => {
   });
 
   it('should render nothing when customer is null', () => {
-    component.customer = null;
+    fixture.componentRef.setInput('customer', null);
     fixture.detectChanges();
 
     const compiled = fixture.nativeElement as HTMLElement;
@@ -69,7 +69,7 @@ describe('CustomerDetailsComponent', () => {
   });
 
   it('should display customer details', () => {
-    component.customer = mockCustomer;
+    fixture.componentRef.setInput('customer', mockCustomer);
     fixture.detectChanges();
 
     const compiled = fixture.nativeElement as HTMLElement;
@@ -78,7 +78,7 @@ describe('CustomerDetailsComponent', () => {
   });
 
   it('should display addresses', () => {
-    component.customer = mockCustomer;
+    fixture.componentRef.setInput('customer', mockCustomer);
     fixture.detectChanges();
 
     const compiled = fixture.nativeElement as HTMLElement;
@@ -88,7 +88,7 @@ describe('CustomerDetailsComponent', () => {
   });
 
   it('should display contacts', () => {
-    component.customer = mockCustomer;
+    fixture.componentRef.setInput('customer', mockCustomer);
     fixture.detectChanges();
 
     const compiled = fixture.nativeElement as HTMLElement;
@@ -98,7 +98,7 @@ describe('CustomerDetailsComponent', () => {
 
   it('should emit edit event when edit button is clicked', () => {
     const spy = jest.spyOn(component.edit, 'emit');
-    component.customer = mockCustomer;
+    fixture.componentRef.setInput('customer', mockCustomer);
     fixture.detectChanges();
 
     const buttons = fixture.nativeElement.querySelectorAll('button');
@@ -112,7 +112,7 @@ describe('CustomerDetailsComponent', () => {
 
   it('should emit back event when back button is clicked', () => {
     const spy = jest.spyOn(component.back, 'emit');
-    component.customer = mockCustomer;
+    fixture.componentRef.setInput('customer', mockCustomer);
     fixture.detectChanges();
 
     const buttons = fixture.nativeElement.querySelectorAll('button');
@@ -124,5 +124,72 @@ describe('CustomerDetailsComponent', () => {
     backButton.click();
 
     expect(spy).toHaveBeenCalled();
+  });
+
+  describe('feature flag combinations (C9)', () => {
+    function createWithFeatures(
+      features: Partial<typeof DEFAULT_CONFIG.features>,
+    ): { fixture: ComponentFixture<CustomerDetailsComponent>; component: CustomerDetailsComponent } {
+      TestBed.resetTestingModule();
+      const config: CustomerRegistryUiConfig = {
+        ...DEFAULT_CONFIG,
+        features: { ...DEFAULT_CONFIG.features, ...features },
+      };
+      TestBed.configureTestingModule({
+        imports: [CustomerDetailsComponent, NoopAnimationsModule],
+        providers: [
+          { provide: CUSTOMER_REGISTRY_UI_CONFIG, useValue: config },
+          { provide: CUSTOMER_I18N_OVERRIDES, useValue: {} },
+          CustomerI18nService,
+        ],
+      });
+      const f = TestBed.createComponent(CustomerDetailsComponent);
+      const c = f.componentInstance;
+      return { fixture: f, component: c };
+    }
+
+    it('should hide addresses when addresses feature is disabled', () => {
+      const { fixture: f, component: c } = createWithFeatures({ addresses: false });
+      f.componentRef.setInput('customer', mockCustomer);
+      f.detectChanges();
+
+      const compiled = f.nativeElement as HTMLElement;
+      expect(compiled.textContent).not.toContain('Rua das Flores');
+      expect(c.showAddresses).toBe(false);
+    });
+
+    it('should hide contacts when contacts feature is disabled', () => {
+      const { fixture: f, component: c } = createWithFeatures({ contacts: false });
+      f.componentRef.setInput('customer', mockCustomer);
+      f.detectChanges();
+
+      const compiled = f.nativeElement as HTMLElement;
+      expect(compiled.textContent).not.toContain('maria@example.com');
+      expect(c.showContacts).toBe(false);
+    });
+
+    it('should hide both addresses and contacts when both features are disabled', () => {
+      const { fixture: f } = createWithFeatures({ addresses: false, contacts: false });
+      f.componentRef.setInput('customer', mockCustomer);
+      f.detectChanges();
+
+      const compiled = f.nativeElement as HTMLElement;
+      expect(compiled.textContent).not.toContain('Rua das Flores');
+      expect(compiled.textContent).not.toContain('maria@example.com');
+    });
+
+    it('should still show basic details when all optional features are disabled', () => {
+      const { fixture: f } = createWithFeatures({
+        addresses: false,
+        contacts: false,
+        inlineEdit: false,
+      });
+      f.componentRef.setInput('customer', mockCustomer);
+      f.detectChanges();
+
+      const compiled = f.nativeElement as HTMLElement;
+      expect(compiled.textContent).toContain('Maria Silva');
+      expect(compiled.textContent).toContain('52998224725');
+    });
   });
 });

@@ -19,6 +19,17 @@ implementation.
 9. [Copilot-Assisted Migration](#9-copilot-assisted-migration)
 10. [Pragmatic vs. Strict Hexagonal](#10-pragmatic-vs-strict-hexagonal)
 
+### Related Documentation
+
+| Document | Covers |
+|----------|--------|
+| [Copilot Migration Strategy](copilot-migration-strategy.md) | Step-by-step Copilot Chat workflow (workspace setup, phases 0-5) |
+| [Copilot Prompts](../migration/copilot-prompts.md) | 20 ready-to-paste prompts organized by phase |
+| [Migration Scorecard](../migration/scorecard.md) | 23-dimension progress tracker (13 automated + 10 manual) |
+| [Migration Templates README](../migration/README.md) | Template files and usage instructions |
+| [CONTRIBUTING.md](../CONTRIBUTING.md) | Development workflow, branch naming, PR process |
+| [README.md](../README.md) | Architecture diagrams, REST API docs, event schemas |
+
 ---
 
 ## 1. Overview
@@ -903,7 +914,8 @@ in the reference that has `allowedDependencies = {"core", "persistence"}`. This 
 because:
 
 1. Data migration is inherently tied to the storage layer being migrated
-2. The module is gated by its own feature flag (`features.migrations`) and is optional
+2. The module is gated by `features.persistence-jpa` (same flag as the persistence adapter) and
+   optionally runs on startup via `features.attributes-auto-migrate-on-startup`
 3. It does not establish a runtime dependency cycle — it only runs during schema upgrades
 
 If your service does not need Liquibase-based data migration, omit this module entirely.
@@ -1039,6 +1051,68 @@ com.yourorg.yourservice.autoconfigure.YourServiceObservabilityAutoConfiguration
 Order in this file does NOT matter -- Spring resolves ordering from the `@AutoConfiguration`
 `before`/`after` attributes.
 
+### Property Gate Convention
+
+All auto-configuration classes MUST use the **dual-gate pattern**:
+
+```java
+@ConditionalOnProperty(
+    prefix = "customer.registry",
+    name = {"enabled", "features.<feature-name>"},
+    havingValue = "true"
+)
+```
+
+This ensures that:
+1. The **master switch** (`enabled`) disables all features at once
+2. Each **feature flag** can be toggled independently
+3. Both must be `true` for the auto-configuration to activate
+
+Bean-level `@ConditionalOnProperty` within an auto-config (e.g., Liquibase in the persistence
+auto-config) should also include the `enabled` gate for defense-in-depth, preventing bean
+registration even if the parent class-level condition is somehow bypassed.
+
+The core auto-configuration is the exception — it uses only the master switch
+(`name = "enabled"`) because it provides fallback beans that must be available whenever
+the registry is enabled, regardless of which features are active.
+
+> **Note on property naming**: Feature flag property names use **kebab-case** in YAML
+> (`persistence-jpa`, `publish-events`, `rest-api`). Spring Boot's relaxed binding
+> automatically maps these to the camelCase fields in the `Features` class
+> (`persistenceJpa`, `publishEvents`, `restApi`). Java annotations always reference
+> the kebab-case form since they match the YAML keys. There is no risk of
+> `matchIfMissing` appearing in kebab-case — it is a Java annotation attribute.
+
+### CLI Verification Heuristics
+
+The migration CLI uses static analysis heuristics (not a full Java parser) to verify
+scorecard dimensions. Known limitations:
+
+- **Comment detection**: Uses a single-pass heuristic that handles `//`, `/* */`, and
+  Javadoc blocks. Deeply nested string literals containing comment delimiters (extremely
+  rare in practice) may cause false positives.
+- **@Bean/@ConditionalOnMissingBean pairing**: Coverage-based check within a 5-line
+  effective distance. Annotations separated by large Javadoc blocks may appear unpaired
+  even though they are logically associated.
+- **Interface detection**: Searches for the `interface` keyword in non-comment lines.
+  Interfaces inside inner classes or annotations are detected correctly, but dynamically
+  generated interfaces are not.
+
+- **@Bean/@ConditionalOnMissingBean effective distance**: The CLI considers annotations
+  "paired" if `@ConditionalOnMissingBean` appears within 5 lines of a `@Bean` annotation.
+  If your `@Bean` method has a large Javadoc block (> 5 lines) between the annotations,
+  the CLI may report them as unpaired. Move the Javadoc above both annotations to fix this.
+
+These heuristics are deliberately conservative — they may produce false warnings but should
+not produce false passes. If a check fails unexpectedly, use `--verbose` for full details.
+
+> **CLI Scope**: The `@ConditionalOnMissingBean` check applies to:
+> - `*CoreAutoConfiguration.java` (core fallback beans)
+> - `*Configuration.java` in `persistence/`, `rest/`, `events/` packages (bridge configs)
+>
+> Auto-configs for migration, observability, and Liquibase are **excluded** because their
+> beans use different conditional patterns (`@ConditionalOnBean`, `@ConditionalOnClass`).
+
 ### Testing Auto-Configuration
 
 Use `ApplicationContextRunner` to verify conditional behavior:
@@ -1157,6 +1231,52 @@ does not provide translations.
 - CSS custom properties: `--crui-*` prefix
 - Avoid naming `@Input()` properties `formControl` -- it collides with Angular's
   `FormControlDirective` selector. Use `control` instead.
+
+### Feature Flag Coverage Matrix
+
+Not all feature flags affect all views. The table below documents which Angular
+views/components are affected by each flag in the current version:
+
+| Feature Flag | List View | Detail View | Form | Search |
+|-------------|-----------|-------------|------|--------|
+| `search` | - | - | - | Controls visibility |
+| `addresses` | - | Controls address section | Not yet supported | - |
+| `contacts` | - | Controls contact section | Not yet supported | - |
+| `inlineEdit` | Reserved | Reserved | Reserved | Reserved |
+
+**Key**:
+- "Controls ..." = flag toggles visibility/behavior of that section
+- "Not yet supported" = flag exists but has no effect in this view (future work)
+- "Reserved" = flag is defined but not currently implemented
+- "-" = flag has no effect on this view
+
+When migrating a service with UI, map your feature flags to this matrix and document any
+gaps. The `inlineEdit` flag is reserved for a future inline-editing capability.
+
+### Public API Integration Guide
+
+The Angular library exposes these entry points for host application integration:
+
+**Providers** (use in `app.config.ts` or module providers):
+- `provideCustomerRegistryUi(config)` — main configuration provider
+- `provideCustomerRegistryI18n(overrides)` — i18n overrides
+- `provideCustomerRegistryRenderers(registrations)` — custom field renderers
+
+**Components** (use in templates):
+- `CustomerListComponent` — paginated customer table
+- `CustomerSearchComponent` — search form with type/status/document filters
+- `CustomerFormComponent` — create/edit form with validation
+- `CustomerDetailsComponent` — read-only detail view with addresses and contacts
+
+**Services** (inject for programmatic access):
+- `CustomerStateService` — signal-based state management
+- `CustomerI18nService` — locale management and translation
+- `CustomerRegistryApiClient` — HTTP client (configurable base URL)
+
+**Tokens** (override for customization):
+- `CUSTOMER_REGISTRY_UI_CONFIG` — full configuration object
+- `CUSTOMER_I18N_OVERRIDES` — translation overrides per locale
+- `CUSTOMER_UI_RENDERER_ERROR_REPORTER` — error reporting hook
 
 ---
 
@@ -1376,8 +1496,11 @@ customer-registry-starter/src/main/java/com/onefinancial/customer/
             CustomerStatusChanged.java, CustomerDeleted.java
         exception/
             CustomerNotFoundException.java
+            CustomerRegistryException.java         # Base exception class
             CustomerValidationException.java
+            DocumentValidationException.java       # Invalid CPF/CNPJ format
             DuplicateDocumentException.java
+            InvalidStatusTransitionException.java  # Illegal status change
         service/
             CustomerRegistryService.java           # Domain service
 
@@ -1405,12 +1528,19 @@ customer-registry-starter/src/main/java/com/onefinancial/customer/
         package-info.java                          # allowedDependencies = {"core"}
         CustomerObservabilityConfiguration.java    # PUBLIC bridge
 
+    migration/
+        package-info.java                          # allowedDependencies = {"core", "persistence"}
+        AttributeMigrationService.java             # Migration orchestrator
+        AttributeSchemaMigration.java              # SPI for schema migrations
+        PostgresAdvisoryLock.java                  # Distributed lock for migrations
+
     autoconfigure/
         CustomerRegistryCoreAutoConfiguration.java
         CustomerRegistryPersistenceAutoConfiguration.java
         CustomerRegistryRestAutoConfiguration.java
         CustomerRegistryEventsAutoConfiguration.java
         CustomerRegistryObservabilityAutoConfiguration.java
+        CustomerRegistryMigrationAutoConfiguration.java  # Migration wiring
         CustomerRegistryProperties.java
         InMemoryCustomerRepository.java            # Fallback
         NoOpEventPublisher.java                    # Fallback

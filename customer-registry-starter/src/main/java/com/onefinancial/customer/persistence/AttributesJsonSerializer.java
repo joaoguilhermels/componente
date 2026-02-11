@@ -8,6 +8,9 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.onefinancial.customer.core.model.AttributeValue;
 import com.onefinancial.customer.core.model.Attributes;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -27,6 +30,8 @@ import java.util.Map;
  * </pre>
  */
 final class AttributesJsonSerializer {
+
+    private static final Logger log = LoggerFactory.getLogger(AttributesJsonSerializer.class);
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
         .registerModule(new JavaTimeModule())
@@ -110,15 +115,28 @@ final class AttributesJsonSerializer {
 
     private static AttributeValue deserializeValue(Map<String, Object> map) {
         String type = (String) map.get("type");
+        if (type == null) {
+            log.warn("Attribute entry missing 'type' field; coercing value to STRING");
+            return new AttributeValue.StringValue(String.valueOf(map.get("value")));
+        }
         Object raw = map.get("value");
 
+        if (raw == null) {
+            log.warn("Attribute of type {} has null value; coercing to type default", type);
+        }
+
         return switch (type) {
-            case "STRING" -> new AttributeValue.StringValue((String) raw);
-            case "INTEGER" -> new AttributeValue.IntegerValue(((Number) raw).intValue());
-            case "BOOLEAN" -> new AttributeValue.BooleanValue((Boolean) raw);
-            case "DECIMAL" -> new AttributeValue.DecimalValue(new java.math.BigDecimal(raw.toString()));
-            case "DATE" -> new AttributeValue.DateValue(java.time.LocalDate.parse(raw.toString()));
-            default -> new AttributeValue.StringValue(raw.toString());
+            case "STRING" -> new AttributeValue.StringValue(raw != null ? (String) raw : "");
+            case "INTEGER" -> new AttributeValue.IntegerValue(raw != null ? ((Number) raw).intValue() : 0);
+            case "BOOLEAN" -> new AttributeValue.BooleanValue(raw != null && (Boolean) raw);
+            case "DECIMAL" -> new AttributeValue.DecimalValue(
+                raw != null ? new java.math.BigDecimal(raw.toString()) : java.math.BigDecimal.ZERO);
+            case "DATE" -> new AttributeValue.DateValue(
+                raw != null ? java.time.LocalDate.parse(raw.toString()) : java.time.LocalDate.EPOCH);
+            default -> {
+                log.warn("Unknown attribute type '{}'; coercing to STRING", type);
+                yield new AttributeValue.StringValue(raw != null ? raw.toString() : "");
+            }
         };
     }
 }

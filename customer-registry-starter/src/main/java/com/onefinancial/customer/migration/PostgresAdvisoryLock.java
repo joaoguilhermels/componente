@@ -30,16 +30,30 @@ public class PostgresAdvisoryLock implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(PostgresAdvisoryLock.class);
 
     /**
-     * Lock key derived from "customer-registry-migration".hashCode() to avoid collisions.
+     * Default lock key for customer registry attribute schema migration.
+     * Chosen as a fixed long value unlikely to collide with application-level advisory locks.
      */
-    static final long LOCK_KEY = 7_391_825_001L;
+    public static final long DEFAULT_LOCK_KEY = 7_391_825_001L;
 
     private final DataSource dataSource;
+    private final long lockKey;
     private Connection dedicatedConnection;
     private boolean acquired;
 
     public PostgresAdvisoryLock(DataSource dataSource) {
+        this(dataSource, DEFAULT_LOCK_KEY);
+    }
+
+    public PostgresAdvisoryLock(DataSource dataSource, long lockKey) {
         this.dataSource = dataSource;
+        this.lockKey = lockKey;
+    }
+
+    /**
+     * Returns the lock key used by this instance.
+     */
+    public long getLockKey() {
+        return lockKey;
     }
 
     /**
@@ -49,12 +63,18 @@ public class PostgresAdvisoryLock implements AutoCloseable {
      * @throws SQLException if a database error occurs
      */
     public boolean tryAcquire() throws SQLException {
-        dedicatedConnection = dataSource.getConnection();
-        dedicatedConnection.setAutoCommit(true);
+        Connection conn = dataSource.getConnection();
+        try {
+            conn.setAutoCommit(true);
+        } catch (SQLException e) {
+            conn.close();
+            throw e;
+        }
+        dedicatedConnection = conn;
 
         try (PreparedStatement ps = dedicatedConnection
                 .prepareStatement("SELECT pg_try_advisory_lock(?)")) {
-            ps.setLong(1, LOCK_KEY);
+            ps.setLong(1, lockKey);
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 acquired = rs.getBoolean(1);
@@ -62,9 +82,9 @@ public class PostgresAdvisoryLock implements AutoCloseable {
         }
 
         if (acquired) {
-            log.info("Acquired advisory lock (key={}) for attribute schema migration", LOCK_KEY);
+            log.info("Acquired advisory lock (key={}) for attribute schema migration", lockKey);
         } else {
-            log.info("Advisory lock (key={}) already held by another session — skipping migration", LOCK_KEY);
+            log.info("Advisory lock (key={}) already held by another session — skipping migration", lockKey);
             closeDedicatedConnection();
         }
         return acquired;
@@ -82,20 +102,18 @@ public class PostgresAdvisoryLock implements AutoCloseable {
      */
     @Override
     public void close() {
-        if (!acquired || dedicatedConnection == null) {
-            return;
-        }
-        try (PreparedStatement ps = dedicatedConnection
-                .prepareStatement("SELECT pg_advisory_unlock(?)")) {
-            ps.setLong(1, LOCK_KEY);
-            ps.execute();
-            log.info("Released advisory lock (key={})", LOCK_KEY);
-        } catch (SQLException e) {
-            log.warn("Failed to release advisory lock (key={}): {}", LOCK_KEY, e.getMessage());
-        } finally {
+        if (acquired && dedicatedConnection != null) {
+            try (PreparedStatement ps = dedicatedConnection
+                    .prepareStatement("SELECT pg_advisory_unlock(?)")) {
+                ps.setLong(1, lockKey);
+                ps.execute();
+                log.info("Released advisory lock (key={})", lockKey);
+            } catch (SQLException e) {
+                log.warn("Failed to release advisory lock (key={}): {}", lockKey, e.getMessage());
+            }
             acquired = false;
-            closeDedicatedConnection();
         }
+        closeDedicatedConnection();
     }
 
     private void closeDedicatedConnection() {

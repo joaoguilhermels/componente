@@ -1,7 +1,8 @@
 import {
+  AfterViewInit,
   ChangeDetectionStrategy,
-  ChangeDetectorRef,
   Component,
+  ComponentRef,
   ErrorHandler,
   inject,
   Input,
@@ -59,7 +60,7 @@ import { CUSTOMER_UI_RENDERER_ERROR_REPORTER } from '../../tokens';
     }
   `],
 })
-export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
+export class SafeFieldRendererHostComponent implements OnChanges, AfterViewInit, OnDestroy {
   /** The renderer registration to use for this field */
   @Input() registration!: FieldRendererRegistration;
 
@@ -83,12 +84,18 @@ export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
 
   private readonly errorReporter = inject(CUSTOMER_UI_RENDERER_ERROR_REPORTER);
   private readonly errorHandler = inject(ErrorHandler);
-  private readonly cdr = inject(ChangeDetectorRef);
+  private componentRef?: ComponentRef<unknown>;
   private fallbackSubscription?: Subscription;
+  private controlSubscription?: Subscription;
+  private pendingRetry = false;
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['registration'] || changes['control']) {
-      this.tryCreateRenderer();
+      if (this.rendererHost) {
+        this.tryCreateRenderer();
+      } else {
+        this.pendingRetry = true;
+      }
     }
     if (changes['disabled']) {
       if (this.disabled) {
@@ -96,30 +103,49 @@ export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
       } else {
         this.fallbackControl.enable();
       }
+      if (this.componentRef) {
+        const instance = this.componentRef.instance as Record<string, unknown>;
+        if ('setDisabledState' in instance && typeof instance['setDisabledState'] === 'function') {
+          (instance['setDisabledState'] as (disabled: boolean) => void)(this.disabled);
+        }
+      }
+    }
+  }
+
+  ngAfterViewInit(): void {
+    if (this.pendingRetry) {
+      this.pendingRetry = false;
+      this.tryCreateRenderer();
     }
   }
 
   ngOnDestroy(): void {
     this.fallbackSubscription?.unsubscribe();
+    this.controlSubscription?.unsubscribe();
     this.rendererHost?.clear();
   }
 
   private tryCreateRenderer(): void {
     // Reset fallback state
     this.useFallback.set(false);
-    this.cdr.detectChanges();
 
     if (!this.registration || !this.rendererHost) {
+      this.errorReporter.report(
+        this.fieldKey || 'unknown',
+        new Error('No renderer registration found'),
+      );
       this.activateFallback('no-registration');
       return;
     }
 
     try {
       this.rendererHost.clear();
+      this.componentRef = undefined;
 
       const componentRef = this.rendererHost.createComponent(
         this.registration.component
       );
+      this.componentRef = componentRef;
 
       // Inject context into the renderer
       const context: FieldRendererContext = {
@@ -134,7 +160,13 @@ export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
       // Try to set context if the component has an input for it
       const instance = componentRef.instance as Record<string, unknown>;
       if ('context' in instance) {
-        instance['context'] = context;
+        try {
+          instance['context'] = context;
+        } catch (ctxError) {
+          this.errorHandler.handleError(ctxError);
+          this.activateFallback(this.registration.rendererId, ctxError);
+          return;
+        }
       }
 
       componentRef.changeDetectorRef.detectChanges();
@@ -151,14 +183,19 @@ export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
     // Unsubscribe previous fallback sync before creating a new one
     this.fallbackSubscription?.unsubscribe();
 
-    // Sync fallback control with the form control
+    // Sync fallback control -> form control (with emitEvent: false to prevent loops)
     this.fallbackSubscription = this.fallbackControl.valueChanges.subscribe((value) => {
-      this.control?.setValue(value);
+      this.control?.setValue(value, { emitEvent: false });
+    });
+
+    // Sync form control -> fallback control (reverse direction)
+    this.controlSubscription?.unsubscribe();
+    this.controlSubscription = this.control?.valueChanges.subscribe((value) => {
+      this.fallbackControl.setValue(value, { emitEvent: false });
     });
 
     if (error) {
       this.errorReporter.report(rendererId, error);
     }
-    this.cdr.detectChanges();
   }
 }

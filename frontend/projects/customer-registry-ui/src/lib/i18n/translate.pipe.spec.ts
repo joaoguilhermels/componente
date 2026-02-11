@@ -7,11 +7,14 @@ describe('TranslatePipe', () => {
   let pipe: TranslatePipe;
   let i18nService: jest.Mocked<CustomerI18nService>;
   let localeSignal: WritableSignal<string>;
+  let versionSignal: WritableSignal<number>;
 
   beforeEach(() => {
     localeSignal = signal('pt-BR');
+    versionSignal = signal(0);
     const mockService = {
       currentLocale: localeSignal.asReadonly(),
+      translationsVersion: versionSignal.asReadonly(),
       translate: jest.fn((key: string, ...params: (string | number)[]) => {
         const locale = localeSignal();
         if (locale === 'pt-BR') {
@@ -69,6 +72,30 @@ describe('TranslatePipe', () => {
     const second = pipe.transform('label.customer');
     expect(second).toBe('Customer');
 
+    expect(i18nService.translate).toHaveBeenCalledTimes(2);
+  });
+
+  it('should produce different output on locale switch without re-binding key (A1)', () => {
+    // Simulate what happens in a template: the key never changes,
+    // but the locale signal is updated externally.
+    const result1 = pipe.transform('label.customer');
+    expect(result1).toBe('Cliente');
+
+    localeSignal.set('en-US');
+
+    // Same key, no re-binding — impure pipe is re-invoked by Angular
+    const result2 = pipe.transform('label.customer');
+    expect(result2).toBe('Customer');
+    expect(result2).not.toBe(result1);
+  });
+
+  it('should invalidate cache when translations version changes (C5)', () => {
+    pipe.transform('label.customer');
+    expect(i18nService.translate).toHaveBeenCalledTimes(1);
+
+    // Same key and locale but version bumped
+    versionSignal.set(1);
+    pipe.transform('label.customer');
     expect(i18nService.translate).toHaveBeenCalledTimes(2);
   });
 });

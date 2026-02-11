@@ -75,6 +75,20 @@ class CustomerEntityMapperTest {
         }
 
         @Test
+        @DisplayName("should propagate version to entity")
+        void propagatesVersion() {
+            Customer customer = Customer.reconstitute(
+                UUID.randomUUID(), CustomerType.PF,
+                new Document(CustomerType.PF, VALID_CPF), "Test",
+                CustomerStatus.ACTIVE, List.of(), List.of(),
+                Attributes.empty(), Instant.now(), Instant.now(), 5L);
+
+            CustomerEntity entity = CustomerEntityMapper.toEntity(customer, false);
+
+            assertThat(entity.getVersion()).isEqualTo(5L);
+        }
+
+        @Test
         @DisplayName("should map empty addresses and contacts")
         void mapsEmptyCollections() {
             Customer customer = Customer.createPF(VALID_CPF, "Test");
@@ -183,6 +197,21 @@ class CustomerEntityMapperTest {
             assertThat(reconstituted.getAttributes()
                 .get("score", AttributeValue.DecimalValue.class).value())
                 .isEqualByComparingTo(new BigDecimal("99.5"));
+        }
+
+        @Test
+        @DisplayName("should propagate version from entity to domain")
+        void propagatesVersionToDomain() {
+            Customer original = Customer.reconstitute(
+                UUID.randomUUID(), CustomerType.PF,
+                new Document(CustomerType.PF, VALID_CPF), "Test",
+                CustomerStatus.ACTIVE, List.of(), List.of(),
+                Attributes.empty(), Instant.now(), Instant.now(), 3L);
+            CustomerEntity entity = CustomerEntityMapper.toEntity(original, false);
+
+            Customer reconstituted = CustomerEntityMapper.toDomain(entity);
+
+            assertThat(reconstituted.getVersion()).isEqualTo(3L);
         }
 
         @Test
