@@ -30,7 +30,8 @@ public class PostgresAdvisoryLock implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(PostgresAdvisoryLock.class);
 
     /**
-     * Default lock key derived from "customer-registry-migration".hashCode() to avoid collisions.
+     * Default lock key for customer registry attribute schema migration.
+     * Chosen as a fixed long value unlikely to collide with application-level advisory locks.
      */
     public static final long DEFAULT_LOCK_KEY = 7_391_825_001L;
 

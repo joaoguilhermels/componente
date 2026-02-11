@@ -60,6 +60,12 @@ public class CustomerRegistryCoreAutoConfiguration {
         return new CustomerRegistryService(validators, enrichers, repository, eventPublisher, metrics);
     }
 
+    @Bean
+    @ConditionalOnMissingBean
+    public CustomerOperationMetrics customerOperationMetrics() {
+        return new NoOpOperationMetrics();
+    }
+
     @Bean("customerRegistryMessageSource")
     @ConditionalOnMissingBean(name = "customerRegistryMessageSource")
     public MessageSource customerRegistryMessageSource() {

@@ -8,7 +8,7 @@ import java.util.UUID;
 /**
  * Domain event published when a new customer is registered.
  *
- * @param eventId      unique UUID for idempotent processing
+ * @param eventId      content-derived UUID (v3) for event deduplication
  * @param customerId   the newly created customer's ID
  * @param customerType PF or PJ
  * @param occurredAt   timestamp of the event

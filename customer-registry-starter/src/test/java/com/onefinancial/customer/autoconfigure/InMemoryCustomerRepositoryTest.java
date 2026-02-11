@@ -141,6 +141,19 @@ class InMemoryCustomerRepositoryTest {
         }
 
         @Test
+        @DisplayName("should match by document number using independently constructed Document")
+        void matchesByDocumentNumber() {
+            Customer customer = Customer.createPF(VALID_CPF, "Maria Silva");
+            repository.save(customer);
+
+            // Construct a new Document independently (not from the customer object)
+            // to verify existsByDocument matches by number, not by object identity
+            Document freshDocument = new Document(CustomerType.PF, VALID_CPF);
+
+            assertThat(repository.existsByDocument(freshDocument)).isTrue();
+        }
+
+        @Test
         @DisplayName("should return false when document does not exist")
         void returnsFalseWhenNotExists() {
             Document document = new Document(CustomerType.PJ, VALID_CNPJ);

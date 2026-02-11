@@ -28,6 +28,7 @@ public final class Customer {
     private Attributes attributes;
     private Instant createdAt;
     private Instant updatedAt;
+    /** JPA optimistic locking version. {@code null} for newly created (unpersisted) customers. */
     private Long version;
 
     private Customer() {

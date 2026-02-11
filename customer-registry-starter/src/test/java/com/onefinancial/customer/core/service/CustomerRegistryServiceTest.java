@@ -373,6 +373,29 @@ class CustomerRegistryServiceTest {
         }
 
         @Test
+        @DisplayName("should record delete operation metric")
+        void shouldRecordMetricOnDelete() {
+            Customer customer = Customer.createPF(VALID_CPF, "Test");
+            when(repository.findById(customer.getId())).thenReturn(Optional.of(customer));
+
+            serviceWithMetrics.deleteCustomer(customer.getId());
+
+            verify(metricsBean).recordOperation(eq("delete"), eq("success"), any());
+        }
+
+        @Test
+        @DisplayName("should record status_change operation metric")
+        void shouldRecordMetricOnStatusChange() {
+            Customer customer = Customer.createPF(VALID_CPF, "Test");
+            when(repository.findById(customer.getId())).thenReturn(Optional.of(customer));
+            when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+            serviceWithMetrics.changeStatus(customer.getId(), CustomerStatus.ACTIVE);
+
+            verify(metricsBean).recordOperation(eq("status_change"), eq("success"), any());
+        }
+
+        @Test
         @DisplayName("should not fail when metrics are absent")
         void shouldNotFailWithoutMetrics() {
             // service without metrics (default constructor)

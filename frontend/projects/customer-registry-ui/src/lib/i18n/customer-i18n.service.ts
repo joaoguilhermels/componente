@@ -30,7 +30,7 @@ export class CustomerI18nService {
   /** Current locale signal — reactive, can be changed at runtime */
   readonly currentLocale = signal<string>(this.config.locale);
 
-  /** Monotonically increasing version counter, incremented on every locale or override change */
+  /** Monotonically increasing version counter, incremented on every locale change */
   private readonly _translationsVersion = signal(0);
   readonly translationsVersion = this._translationsVersion.asReadonly();
 

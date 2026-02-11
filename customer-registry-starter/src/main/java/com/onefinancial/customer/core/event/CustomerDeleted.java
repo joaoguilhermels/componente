@@ -6,7 +6,7 @@ import java.util.UUID;
 /**
  * Domain event published when a customer is deleted.
  *
- * @param eventId    unique UUID for idempotent processing
+ * @param eventId    content-derived UUID (v3) for event deduplication
  * @param customerId the deleted customer's ID
  * @param occurredAt timestamp of the event
  */

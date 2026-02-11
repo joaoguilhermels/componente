@@ -8,7 +8,7 @@ import java.util.UUID;
 /**
  * Domain event published when a customer's lifecycle status changes.
  *
- * @param eventId    unique UUID for idempotent processing
+ * @param eventId    content-derived UUID (v3) for event deduplication
  * @param customerId the customer whose status changed
  * @param fromStatus the previous status
  * @param toStatus   the new status

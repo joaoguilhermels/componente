@@ -5,8 +5,9 @@ import java.time.Duration;
 /**
  * SPI for recording customer operation metrics.
  *
- * <p>Implementations are provided by the observability module. The core service
- * uses this port to avoid a direct dependency on infrastructure (Micrometer).</p>
+ * <p>Implementations are provided by the observability module or host applications.
+ * The core service uses this SPI to avoid a direct dependency on infrastructure (Micrometer).
+ * When no implementation is available, a no-op fallback is registered by auto-configuration.</p>
  */
 public interface CustomerOperationMetrics {
 

@@ -316,7 +316,9 @@ class CustomerControllerTest {
         void returnBadRequestForNegativePage() throws Exception {
             mockMvc.perform(get("/api/v1/customers")
                     .param("page", "-1"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title").value("Validation Error"))
+                .andExpect(jsonPath("$.errors").isArray());
         }
 
         @Test
@@ -324,7 +326,9 @@ class CustomerControllerTest {
         void returnBadRequestForZeroSize() throws Exception {
             mockMvc.perform(get("/api/v1/customers")
                     .param("size", "0"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title").value("Validation Error"))
+                .andExpect(jsonPath("$.errors").isArray());
         }
 
         @Test
@@ -332,7 +336,9 @@ class CustomerControllerTest {
         void returnBadRequestForExcessiveSize() throws Exception {
             mockMvc.perform(get("/api/v1/customers")
                     .param("size", "101"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title").value("Validation Error"))
+                .andExpect(jsonPath("$.errors").isArray());
         }
     }
 

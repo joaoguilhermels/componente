@@ -80,6 +80,37 @@ class PostgresAdvisoryLockTest {
     }
 
     @Test
+    @DisplayName("should acquire lock, unlock, and close connection on happy path")
+    void shouldAcquireUnlockAndCloseOnHappyPath() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        Connection connection = mock(Connection.class);
+        PreparedStatement lockPs = mock(PreparedStatement.class);
+        PreparedStatement unlockPs = mock(PreparedStatement.class);
+        ResultSet rs = mock(ResultSet.class);
+
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement("SELECT pg_try_advisory_lock(?)")).thenReturn(lockPs);
+        when(connection.prepareStatement("SELECT pg_advisory_unlock(?)")).thenReturn(unlockPs);
+        when(lockPs.executeQuery()).thenReturn(rs);
+        when(rs.next()).thenReturn(true);
+        when(rs.getBoolean(1)).thenReturn(true); // lock acquired
+
+        PostgresAdvisoryLock lock = new PostgresAdvisoryLock(dataSource);
+        boolean acquired = lock.tryAcquire();
+
+        assertThat(acquired).isTrue();
+        assertThat(lock.isAcquired()).isTrue();
+
+        lock.close();
+
+        // Verify unlock was called then connection was closed
+        verify(unlockPs).setLong(1, PostgresAdvisoryLock.DEFAULT_LOCK_KEY);
+        verify(unlockPs).execute();
+        verify(connection).close();
+        assertThat(lock.isAcquired()).isFalse();
+    }
+
+    @Test
     @DisplayName("close() should close connection when prepareStatement fails after connection assigned")
     void closeShouldCloseConnectionWhenPrepareStatementFails() throws SQLException {
         DataSource dataSource = mock(DataSource.class);

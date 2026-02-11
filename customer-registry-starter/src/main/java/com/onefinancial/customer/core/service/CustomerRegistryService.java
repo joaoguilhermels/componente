@@ -17,6 +17,8 @@ import com.onefinancial.customer.core.spi.CustomerEnricher;
 import com.onefinancial.customer.core.spi.CustomerValidator;
 import com.onefinancial.customer.core.spi.CustomerOperationMetrics;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
@@ -33,9 +35,9 @@ import java.util.UUID;
  * the auto-configuration layer, allowing it to be tested in isolation.
  * Transaction boundaries are applied via Spring AOP proxying.</p>
  */
-// Architecture note: No @Service annotation — wired by auto-config
-// (@ConditionalOnMissingBean) so host apps can provide an alternative implementation.
 public class CustomerRegistryService {
+
+    private static final Logger log = LoggerFactory.getLogger(CustomerRegistryService.class);
 
     private final List<CustomerValidator> validators;
     private final List<CustomerEnricher> enrichers;
@@ -67,7 +69,7 @@ public class CustomerRegistryService {
     /**
      * Registers a new customer through the full pipeline.
      *
-     * @param customer the customer to register (must be in DRAFT status)
+     * @param customer the customer to register (typically in DRAFT status; validators may enforce this)
      * @return the persisted customer
      * @throws CustomerValidationException if any validator rejects the customer
      * @throws DuplicateDocumentException if the document already exists
@@ -207,7 +209,11 @@ public class CustomerRegistryService {
     }
 
     private void recordMetric(String operation, String status, long startNanos) {
-        metrics.ifPresent(m ->
-            m.recordOperation(operation, status, Duration.ofNanos(System.nanoTime() - startNanos)));
+        try {
+            metrics.ifPresent(m ->
+                m.recordOperation(operation, status, Duration.ofNanos(System.nanoTime() - startNanos)));
+        } catch (RuntimeException metricsEx) {
+            log.warn("Failed to record metric for operation '{}': {}", operation, metricsEx.getMessage());
+        }
     }
 }
