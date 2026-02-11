@@ -233,6 +233,44 @@ describe('CustomerStateService', () => {
     });
   });
 
+  describe('ngOnDestroy', () => {
+    it('should unsubscribe search subscription on destroy', () => {
+      const subject = new Subject<CustomerPageResponse>();
+      apiMock.search.mockReturnValue(subject.asObservable());
+
+      service.loadCustomers();
+      expect(service.loading()).toBe(true);
+
+      service.ngOnDestroy();
+
+      // Completing after destroy should have no effect
+      subject.next(mockPageResponse);
+      subject.complete();
+
+      // Still loading because the subscriber was removed before next() was received
+      expect(service.loading()).toBe(true);
+    });
+
+    it('should unsubscribe detail subscription on destroy', () => {
+      const subject = new Subject<Customer>();
+      apiMock.findById.mockReturnValue(subject.asObservable());
+
+      service.loadCustomer('id-1');
+      expect(service.loading()).toBe(true);
+
+      service.ngOnDestroy();
+
+      subject.next(mockCustomer);
+      subject.complete();
+
+      expect(service.selectedCustomer()).toBeNull();
+    });
+
+    it('should not throw when called without active subscriptions', () => {
+      expect(() => service.ngOnDestroy()).not.toThrow();
+    });
+  });
+
   describe('unexpected error shapes', () => {
     it('should handle error with empty error object', () => {
       apiMock.search.mockReturnValue(

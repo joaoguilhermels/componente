@@ -46,8 +46,8 @@ describe('CustomerListComponent', () => {
   });
 
   it('should display customers in the table', () => {
-    component.customers = [mockCustomer];
-    component.totalCount = 1;
+    fixture.componentRef.setInput('customers', [mockCustomer]);
+    fixture.componentRef.setInput('totalCount', 1);
     fixture.detectChanges();
 
     const compiled = fixture.nativeElement as HTMLElement;
@@ -57,8 +57,8 @@ describe('CustomerListComponent', () => {
   });
 
   it('should show no results message when empty and not loading', () => {
-    component.customers = [];
-    component.loading = false;
+    fixture.componentRef.setInput('customers', []);
+    fixture.componentRef.setInput('loading', false);
     fixture.detectChanges();
 
     const compiled = fixture.nativeElement as HTMLElement;
@@ -66,7 +66,7 @@ describe('CustomerListComponent', () => {
   });
 
   it('should show progress bar when loading', () => {
-    component.loading = true;
+    fixture.componentRef.setInput('loading', true);
     fixture.detectChanges();
 
     const compiled = fixture.nativeElement as HTMLElement;
@@ -100,14 +100,14 @@ describe('CustomerListComponent', () => {
   });
 
   it('should use default displayed columns', () => {
-    expect(component.displayedColumns).toEqual([
+    expect(component.displayedColumns()).toEqual([
       'type', 'document', 'displayName', 'status', 'actions',
     ]);
   });
 
   it('should accept custom displayed columns', () => {
-    component.displayedColumns = ['document', 'displayName'];
+    fixture.componentRef.setInput('displayedColumns', ['document', 'displayName']);
     fixture.detectChanges();
-    expect(component.displayedColumns).toEqual(['document', 'displayName']);
+    expect(component.displayedColumns()).toEqual(['document', 'displayName']);
   });
 });

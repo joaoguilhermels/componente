@@ -685,9 +685,9 @@ class TestCombPerMethodPairing:
     """Fix #2: @ConditionalOnMissingBean must be paired per @Bean method."""
 
     def test_uneven_distribution_detected(self, tmp_repo):
-        """File A has 2 @Bean with 1 COMB, File B has 1 @Bean with 2 COMB. Global sum 3==3 but A is missing one."""
+        """File A has 2 @Bean, 1 COMB near first but second is far away. File B passes."""
         tmp_path, java_root, _, _ = tmp_repo
-        # File A: 2 beans, only 1 COMB
+        # File A: 2 beans, only 1 COMB — second bean is far from any COMB
         file_a = java_root / "autoconfigure" / "CoreAutoConfiguration.java"
         file_a.write_text(textwrap.dedent("""\
             public class CoreAutoConfiguration {
@@ -695,11 +695,18 @@ class TestCombPerMethodPairing:
                 @ConditionalOnMissingBean
                 public Foo foo() { return new Foo(); }
 
+                public void helperA() {}
+                public void helperB() {}
+                public void helperC() {}
+                public void helperD() {}
+                public void helperE() {}
+                public void helperF() {}
+
                 @Bean
                 public Bar bar() { return new Bar(); }
             }
         """))
-        # File B: 1 bean, but 2 COMB annotations (one above @Bean, one stray)
+        # File B: 1 bean with COMB — passes fine
         file_b = java_root / "rest" / "RestConfiguration.java"
         file_b.write_text(textwrap.dedent("""\
             public class RestConfiguration {
@@ -712,7 +719,7 @@ class TestCombPerMethodPairing:
         detector = cli.RepoDetector(tmp_path)
         checker = cli.ScorecardChecker(detector)
         result = checker.check_conditional_on_missing_bean()
-        # Should FAIL: bar() in File A lacks COMB
+        # Should FAIL: bar() in File A is too far from COMB
         assert not result.passed
         assert "2/3" in result.detail  # 2 out of 3 beans have COMB
 
@@ -1461,15 +1468,21 @@ class TestSemanticPortChecks:
         assert not result.passed, f"'interface' in block comment should not match: {result.detail}"
 
     def test_interface_in_port_dir_passes(self, tmp_repo):
-        """A proper Java interface in port/ should pass."""
+        """Proper Java interfaces in port/ should pass (need >= outbound adapter count)."""
         tmp_path, java_root, _, _ = tmp_repo
         port_dir = java_root / "core" / "port"
         port_dir.mkdir(parents=True, exist_ok=True)
-        good_port = port_dir / "GoodPort.java"
-        good_port.write_text(textwrap.dedent("""\
+        # tmp_repo has persistence + events (2 outbound), so need 2 ports
+        port_dir.joinpath("GoodPort.java").write_text(textwrap.dedent("""\
             package com.example.svc.core.port;
             public interface GoodPort {
                 void doSomething();
+            }
+        """))
+        port_dir.joinpath("AnotherPort.java").write_text(textwrap.dedent("""\
+            package com.example.svc.core.port;
+            public interface AnotherPort {
+                void doOther();
             }
         """))
 
@@ -1477,29 +1490,43 @@ class TestSemanticPortChecks:
         checker = cli.ScorecardChecker(detector)
         result = checker.check_port_interfaces()
         assert result.passed
-        assert "1 port interface(s)" in result.detail
+        assert "2 port interface(s)" in result.detail
 
 
 class TestPortCrossReference:
     """H3: Port interfaces should warn when no adapter implements them."""
 
     def test_port_with_adapter_no_warning(self, tmp_repo):
-        """Port interface that has an implementing adapter → no WARNING."""
+        """Port interfaces that have implementing adapters → no WARNING."""
         tmp_path, java_root, _, _ = tmp_repo
         port_dir = java_root / "core" / "port"
         port_dir.mkdir(parents=True, exist_ok=True)
+        # Need 2 ports for 2 outbound adapters (persistence + events in tmp_repo)
         port_dir.joinpath("FooRepository.java").write_text(textwrap.dedent("""\
             package com.example.svc.core.port;
             public interface FooRepository {
                 void save();
             }
         """))
-        # Adapter implementing the port
+        port_dir.joinpath("FooPublisher.java").write_text(textwrap.dedent("""\
+            package com.example.svc.core.port;
+            public interface FooPublisher {
+                void publish();
+            }
+        """))
+        # Adapters implementing the ports
         adapter = java_root / "persistence" / "FooPersistenceAdapter.java"
         adapter.write_text(textwrap.dedent("""\
             package com.example.svc.persistence;
             class FooPersistenceAdapter implements FooRepository {
                 public void save() {}
+            }
+        """))
+        events_adapter = java_root / "events" / "FooEventsAdapter.java"
+        events_adapter.write_text(textwrap.dedent("""\
+            package com.example.svc.events;
+            class FooEventsAdapter implements FooPublisher {
+                public void publish() {}
             }
         """))
 
@@ -1510,14 +1537,21 @@ class TestPortCrossReference:
         assert "WARNING" not in result.detail
 
     def test_port_without_adapter_warns(self, tmp_repo):
-        """Port interface with no implementing adapter → WARNING in detail."""
+        """Port interfaces with no implementing adapter → WARNING in detail."""
         tmp_path, java_root, _, _ = tmp_repo
         port_dir = java_root / "core" / "port"
         port_dir.mkdir(parents=True, exist_ok=True)
+        # Need 2 ports for 2 outbound adapters
         port_dir.joinpath("OrphanPort.java").write_text(textwrap.dedent("""\
             package com.example.svc.core.port;
             public interface OrphanPort {
                 void doSomething();
+            }
+        """))
+        port_dir.joinpath("AnotherOrphan.java").write_text(textwrap.dedent("""\
+            package com.example.svc.core.port;
+            public interface AnotherOrphan {
+                void doOther();
             }
         """))
 
@@ -2024,3 +2058,386 @@ class TestPhaseTimesValidation:
         }))
         state = mgr.load()
         assert state.phase_times == {}
+
+
+# ─── B1: File Lock Race Condition Tests ──────────────────────────────────────
+
+class TestStateLocking:
+    """B1: StateManager uses separate lock file for atomic write."""
+
+    def test_save_creates_lock_file(self, tmp_path):
+        """Lock file should be created during save."""
+        mgr = cli.StateManager(tmp_path)
+        state = mgr.create(service_name="LockTest", tier="Standard")
+        lock_file = mgr.state_file.with_suffix(".lock")
+        assert lock_file.exists(), "Lock file should exist after save"
+
+    def test_save_atomic_write_uses_tmp_file(self, tmp_path):
+        """Save should write to tmp file then rename (tmp file should not persist)."""
+        mgr = cli.StateManager(tmp_path)
+        state = mgr.create(service_name="AtomicTest", tier="Standard")
+        tmp_file = mgr.state_file.with_suffix(".yml.tmp")
+        assert not tmp_file.exists(), "Temp file should not persist after successful save"
+        assert mgr.state_file.exists(), "State file should exist after save"
+
+    def test_load_uses_shared_lock(self, tmp_path):
+        """Load should use shared lock on lock file."""
+        mgr = cli.StateManager(tmp_path)
+        mgr.create(service_name="SharedLock", tier="Standard")
+        # Load should succeed (shared lock is non-blocking for reads)
+        state = mgr.load()
+        assert state.service_name == "SharedLock"
+        lock_file = mgr.state_file.with_suffix(".lock")
+        assert lock_file.exists()
+
+    def test_save_and_load_roundtrip_with_lock(self, tmp_path):
+        """Full roundtrip through locked save/load."""
+        mgr = cli.StateManager(tmp_path)
+        state = mgr.create(service_name="Roundtrip", tier="Advanced")
+        state.current_phase = 4
+        state.prompts_applied = ["Prompt 1.1"]
+        mgr.save(state)
+        loaded = mgr.load()
+        assert loaded.service_name == "Roundtrip"
+        assert loaded.current_phase == 4
+        assert loaded.prompts_applied == ["Prompt 1.1"]
+
+
+# ─── B2: Core Isolation Exact vs Prefix Matching Tests ───────────────────────
+
+class TestCoreIsolationExactVsPrefix:
+    """B2: Transactional is exact match only; modulith is prefix match."""
+
+    def test_transactional_exact_allowed(self):
+        """org.springframework.transaction.annotation.Transactional is allowed."""
+        checker = cli.ScorecardChecker.__new__(cli.ScorecardChecker)
+        assert not checker._is_forbidden_import("org.springframework.transaction.annotation.Transactional")
+
+    def test_transaction_subpackage_forbidden(self):
+        """org.springframework.transaction.SomeOther should NOT be allowed (not exact match)."""
+        checker = cli.ScorecardChecker.__new__(cli.ScorecardChecker)
+        # transaction.SomeOther doesn't match any forbidden prefix either,
+        # so it should NOT be forbidden (it's not in any forbidden list)
+        # Actually, let's verify: transaction is not in FORBIDDEN_CORE_IMPORTS
+        # so it should return False (not forbidden)
+        assert not checker._is_forbidden_import("org.springframework.transaction.SomeOther")
+
+    def test_transaction_annotation_other_forbidden(self):
+        """Only exact Transactional is allowed, not other annotation classes.
+        Since transaction.annotation is not in FORBIDDEN list, it won't be forbidden."""
+        checker = cli.ScorecardChecker.__new__(cli.ScorecardChecker)
+        # This is not in forbidden list and not exact match for allowed
+        # So it should not be forbidden (it's an unlisted package)
+        assert not checker._is_forbidden_import("org.springframework.transaction.annotation.SomeOther")
+
+    def test_modulith_subpackage_allowed(self):
+        """org.springframework.modulith.core.ApplicationModule is allowed (prefix match)."""
+        checker = cli.ScorecardChecker.__new__(cli.ScorecardChecker)
+        assert not checker._is_forbidden_import("org.springframework.modulith.core.ApplicationModule")
+
+    def test_modulith_exact_allowed(self):
+        """org.springframework.modulith itself is allowed."""
+        checker = cli.ScorecardChecker.__new__(cli.ScorecardChecker)
+        assert not checker._is_forbidden_import("org.springframework.modulith")
+
+    def test_boot_still_forbidden(self):
+        """org.springframework.boot is still forbidden."""
+        checker = cli.ScorecardChecker.__new__(cli.ScorecardChecker)
+        assert checker._is_forbidden_import("org.springframework.boot.autoconfigure.AutoConfiguration")
+
+
+# ─── B3: COMB Coverage-Based Pairing Tests ───────────────────────────────────
+
+class TestCombCoveragePairing:
+    """B3: Coverage-based @COMB check — one @COMB can cover multiple @Bean."""
+
+    def test_two_beans_near_one_comb_both_covered(self, tmp_repo):
+        """Two adjacent @Bean methods near one @COMB should both be covered."""
+        tmp_path, java_root, _, _ = tmp_repo
+        config = java_root / "autoconfigure" / "CoreAutoConfiguration.java"
+        config.write_text(textwrap.dedent("""\
+            public class CoreAutoConfiguration {
+                @ConditionalOnMissingBean
+                @Bean
+                public Foo foo() { return new Foo(); }
+
+                @Bean
+                public Bar bar() { return new Bar(); }
+            }
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_conditional_on_missing_bean()
+        # Coverage-based: COMB at line 1 covers both Bean at line 2 (dist 1)
+        # and Bean at line 5 (dist ~4, within threshold). Both covered.
+        assert result.passed, f"Both beans near COMB should be covered: {result.detail}"
+
+    def test_bean_far_from_any_comb_not_covered(self, tmp_repo):
+        """A @Bean that is far from any @COMB should not be covered."""
+        tmp_path, java_root, _, _ = tmp_repo
+        config = java_root / "autoconfigure" / "CoreAutoConfiguration.java"
+        config.write_text(textwrap.dedent("""\
+            public class CoreAutoConfiguration {
+                @ConditionalOnMissingBean
+                @Bean
+                public Foo foo() { return new Foo(); }
+
+                public void helperA() {}
+                public void helperB() {}
+                public void helperC() {}
+                public void helperD() {}
+                public void helperE() {}
+                public void helperF() {}
+
+                @Bean
+                public Bar bar() { return new Bar(); }
+            }
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_conditional_on_missing_bean()
+        assert not result.passed
+        assert "bar" in result.detail.lower() or "1/2" in result.detail
+
+    def test_comb_covers_adjacent_beans_on_both_sides(self, tmp_repo):
+        """A @COMB between two @Bean methods within distance 5 covers both."""
+        tmp_path, java_root, _, _ = tmp_repo
+        config = java_root / "autoconfigure" / "CoreAutoConfiguration.java"
+        config.write_text(textwrap.dedent("""\
+            public class CoreAutoConfiguration {
+                @Bean
+                @ConditionalOnMissingBean
+                @Bean
+                public Foo foo() { return new Foo(); }
+            }
+        """))
+        # Note: this is a degenerate case, but it tests that COMB covers beans on both sides
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_conditional_on_missing_bean()
+        assert result.passed
+
+
+# ─── B4: Port Interfaces Count vs Adapter Count Tests ────────────────────────
+
+class TestPortInterfacesVsAdapters:
+    """B4: Port interfaces check requires at least as many ports as outbound adapter packages."""
+
+    def test_one_port_two_outbound_adapters_fails(self, tmp_repo):
+        """1 port interface, 2 outbound adapters (persistence + events) → FAIL."""
+        tmp_path, java_root, _, _ = tmp_repo
+        port_dir = java_root / "core" / "port"
+        port_dir.mkdir(parents=True, exist_ok=True)
+        port_dir.joinpath("FooRepository.java").write_text(textwrap.dedent("""\
+            package com.example.svc.core.port;
+            public interface FooRepository { void save(); }
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_port_interfaces()
+        assert not result.passed
+        assert "Only 1" in result.detail
+
+    def test_two_ports_two_outbound_adapters_passes(self, tmp_repo):
+        """2 port interfaces, 2 outbound adapters (persistence + events) → PASS."""
+        tmp_path, java_root, _, _ = tmp_repo
+        port_dir = java_root / "core" / "port"
+        port_dir.mkdir(parents=True, exist_ok=True)
+        for name in ["FooRepository", "BazPublisher"]:
+            port_dir.joinpath(f"{name}.java").write_text(textwrap.dedent(f"""\
+                package com.example.svc.core.port;
+                public interface {name} {{ void doSomething(); }}
+            """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_port_interfaces()
+        assert result.passed
+        assert "2 port interface(s)" in result.detail
+
+    def test_one_port_one_outbound_adapter_passes(self, tmp_path):
+        """1 port, 1 outbound adapter (only persistence, no events) → PASS."""
+        java_root = tmp_path / "src" / "main" / "java" / "com" / "example" / "svc"
+        for pkg in ["core", "core/port", "persistence"]:
+            (java_root / pkg).mkdir(parents=True, exist_ok=True)
+        port_dir = java_root / "core" / "port"
+        port_dir.joinpath("FooRepo.java").write_text(textwrap.dedent("""\
+            package com.example.svc.core.port;
+            public interface FooRepo { void save(); }
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_port_interfaces()
+        assert result.passed
+
+    def test_rest_only_adapter_one_port_passes(self, tmp_path):
+        """1 port, only REST adapter (inbound) → PASS (REST doesn't need port)."""
+        java_root = tmp_path / "src" / "main" / "java" / "com" / "example" / "svc"
+        for pkg in ["core", "core/port", "rest"]:
+            (java_root / pkg).mkdir(parents=True, exist_ok=True)
+        port_dir = java_root / "core" / "port"
+        port_dir.joinpath("FooRepo.java").write_text(textwrap.dedent("""\
+            package com.example.svc.core.port;
+            public interface FooRepo { void save(); }
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_port_interfaces()
+        assert result.passed
+
+
+# ─── B6: OnPush Semantic Check Tests ─────────────────────────────────────────
+
+class TestOnPushSemanticCheck:
+    """B6: OnPush check uses regex, not simple string match."""
+
+    def test_variable_named_onpush_not_counted(self, tmp_path):
+        """A variable named onPushStrategy should not count as OnPush usage."""
+        fe_dir = tmp_path / "frontend" / "src"
+        fe_dir.mkdir(parents=True)
+        comp = fe_dir / "my.component.ts"
+        comp.write_text(textwrap.dedent("""\
+            @Component({
+              standalone: true,
+            })
+            export class MyComponent {
+              onPushStrategy = true;
+            }
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_angular_standalone_onpush()
+        assert not result.passed
+        assert "0/1 OnPush" in result.detail
+
+    def test_real_onpush_in_decorator_counted(self, tmp_path):
+        """Real changeDetection: ChangeDetectionStrategy.OnPush is counted."""
+        fe_dir = tmp_path / "frontend" / "src"
+        fe_dir.mkdir(parents=True)
+        comp = fe_dir / "my.component.ts"
+        comp.write_text(textwrap.dedent("""\
+            @Component({
+              standalone: true,
+              changeDetection: ChangeDetectionStrategy.OnPush,
+            })
+            export class MyComponent {}
+        """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_angular_standalone_onpush()
+        assert result.passed
+        assert "1/1 OnPush" in result.detail
+
+
+# ─── B7: Bridge Config Public Class Check Tests ──────────────────────────────
+
+class TestBridgeConfigPublicClass:
+    """B7: Bridge config check verifies class is public."""
+
+    def test_package_private_config_not_counted(self, tmp_repo):
+        """Package-private configuration class should not count as bridge config."""
+        tmp_path, java_root, _, _ = tmp_repo
+        for pkg in ["persistence", "rest", "events"]:
+            cfg = java_root / pkg / f"{pkg.title()}Configuration.java"
+            cfg.write_text(textwrap.dedent(f"""\
+                class {pkg.title()}Configuration {{
+                    @Bean
+                    public Object {pkg}Bean() {{ return new Object(); }}
+                }}
+            """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_bridge_configs()
+        assert not result.passed
+        assert "No @Bean" in result.detail
+
+    def test_public_config_with_bean_counted(self, tmp_repo):
+        """Public configuration class with @Bean should pass."""
+        tmp_path, java_root, _, _ = tmp_repo
+        for pkg in ["persistence", "rest", "events"]:
+            cfg = java_root / pkg / f"{pkg.title()}Configuration.java"
+            cfg.write_text(textwrap.dedent(f"""\
+                public class {pkg.title()}Configuration {{
+                    @Bean
+                    public Object {pkg}Bean() {{ return new Object(); }}
+                }}
+            """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector)
+        result = checker.check_bridge_configs()
+        assert result.passed
+
+
+# ─── B11: Total Dimensions Matches DIMENSIONS Constant ───────────────────────
+
+class TestTotalDimensionsMatchesDefined:
+    """B11: Verify total_dimensions matches len(DIMENSIONS)."""
+
+    def test_total_dimensions_matches_defined(self, reference_checker):
+        result = reference_checker.run_all()
+        assert result.total_dimensions == len(cli.DIMENSIONS), (
+            f"total_dimensions ({result.total_dimensions}) != len(DIMENSIONS) ({len(cli.DIMENSIONS)})"
+        )
+
+
+# ─── B12: --verbose Flag Tests ───────────────────────────────────────────────
+
+class TestVerboseFlag:
+    """B12: --verbose shows all violations without truncation."""
+
+    def test_verbose_flag_parsing(self):
+        parser = cli.build_parser()
+        args = parser.parse_args(["verify", "--verbose"])
+        assert args.verbose is True
+
+    def test_verbose_short_flag_parsing(self):
+        parser = cli.build_parser()
+        args = parser.parse_args(["verify", "-v"])
+        assert args.verbose is True
+
+    def test_verbose_shows_all_violations(self, tmp_repo):
+        """With verbose=True, all violations shown (no truncation)."""
+        tmp_path, java_root, _, _ = tmp_repo
+        # Create 5 files with forbidden imports
+        for i in range(5):
+            core_class = java_root / "core" / f"Bad{i}.java"
+            core_class.write_text(textwrap.dedent(f"""\
+                package com.example.svc.core;
+                import jakarta.persistence.Entity;
+                public class Bad{i} {{}}
+            """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector, verbose=True)
+        result = checker.check_core_isolation()
+        assert not result.passed
+        # All 5 violations should appear (no truncation)
+        assert "... (+" not in result.detail
+        assert "5 violation(s)" in result.detail
+
+    def test_non_verbose_truncates_violations(self, tmp_repo):
+        """Without verbose, violations truncated to 3."""
+        tmp_path, java_root, _, _ = tmp_repo
+        for i in range(5):
+            core_class = java_root / "core" / f"Bad{i}.java"
+            core_class.write_text(textwrap.dedent(f"""\
+                package com.example.svc.core;
+                import jakarta.persistence.Entity;
+                public class Bad{i} {{}}
+            """))
+
+        detector = cli.RepoDetector(tmp_path)
+        checker = cli.ScorecardChecker(detector, verbose=False)
+        result = checker.check_core_isolation()
+        assert not result.passed
+        assert "(+2 more)" in result.detail

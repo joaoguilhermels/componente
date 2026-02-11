@@ -22,16 +22,19 @@ export class TranslatePipe implements PipeTransform {
   private cachedLocale: string | null = null;
   private cachedKey: string | null = null;
   private cachedParams: string | null = null;
+  private cachedVersion: number | null = null;
   private cachedResult = '';
 
   transform(key: string, ...params: (string | number)[]): string {
     const locale = this.i18n.currentLocale();
+    const version = this.i18n.translationsVersion();
     const paramsKey = params.length > 0 ? JSON.stringify(params) : '';
 
     if (
       key === this.cachedKey &&
       locale === this.cachedLocale &&
-      paramsKey === this.cachedParams
+      paramsKey === this.cachedParams &&
+      version === this.cachedVersion
     ) {
       return this.cachedResult;
     }
@@ -39,6 +42,7 @@ export class TranslatePipe implements PipeTransform {
     this.cachedLocale = locale;
     this.cachedKey = key;
     this.cachedParams = paramsKey;
+    this.cachedVersion = version;
     this.cachedResult = this.i18n.translate(key, ...params);
     return this.cachedResult;
   }

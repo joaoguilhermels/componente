@@ -1,6 +1,5 @@
 import {
   ChangeDetectionStrategy,
-  ChangeDetectorRef,
   Component,
   ErrorHandler,
   inject,
@@ -83,7 +82,6 @@ export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
 
   private readonly errorReporter = inject(CUSTOMER_UI_RENDERER_ERROR_REPORTER);
   private readonly errorHandler = inject(ErrorHandler);
-  private readonly cdr = inject(ChangeDetectorRef);
   private fallbackSubscription?: Subscription;
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -107,9 +105,12 @@ export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
   private tryCreateRenderer(): void {
     // Reset fallback state
     this.useFallback.set(false);
-    this.cdr.detectChanges();
 
     if (!this.registration || !this.rendererHost) {
+      this.errorReporter.report(
+        this.fieldKey || 'unknown',
+        new Error('No renderer registration found'),
+      );
       this.activateFallback('no-registration');
       return;
     }
@@ -159,6 +160,5 @@ export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
     if (error) {
       this.errorReporter.report(rendererId, error);
     }
-    this.cdr.detectChanges();
   }
 }

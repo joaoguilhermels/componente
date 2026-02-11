@@ -1,13 +1,12 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  effect,
   EventEmitter,
   inject,
-  Input,
-  OnChanges,
+  input,
   OnInit,
   Output,
-  SimpleChanges,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
@@ -127,7 +126,7 @@ import { cnpjValidator } from '../../validators/cnpj.validator';
 
       <div class="crui-form-actions">
         <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid">
-          {{ (editMode ? 'label.save' : 'label.create') | translate }}
+          {{ (editMode() ? 'label.save' : 'label.create') | translate }}
         </button>
         <button mat-stroked-button type="button" (click)="cancel.emit()">
           {{ 'label.cancel' | translate }}
@@ -160,12 +159,12 @@ import { cnpjValidator } from '../../validators/cnpj.validator';
     }
   `],
 })
-export class CustomerFormComponent implements OnInit, OnChanges {
+export class CustomerFormComponent implements OnInit {
   /** Customer to edit. When null, the form operates in create mode. Default: null. */
-  @Input() customer: Customer | null = null;
+  readonly customer = input<Customer | null>(null);
 
   /** Whether the form is in edit mode (disables type and document fields). Default: false. */
-  @Input() editMode = false;
+  readonly editMode = input(false);
 
   /** Emits the CreateCustomerRequest payload when the form is submitted */
   @Output() readonly submitForm = new EventEmitter<CreateCustomerRequest>();
@@ -194,6 +193,15 @@ export class CustomerFormComponent implements OnInit, OnChanges {
 
   form!: FormGroup;
 
+  constructor() {
+    effect(() => {
+      const c = this.customer();
+      if (this.form && c) {
+        this.patchForm();
+      }
+    });
+  }
+
   get currentType(): CustomerType {
     return this.form?.get('type')?.value ?? 'PF';
   }
@@ -206,12 +214,6 @@ export class CustomerFormComponent implements OnInit, OnChanges {
 
   ngOnInit(): void {
     this.buildForm();
-  }
-
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['customer'] && this.form && this.customer) {
-      this.patchForm();
-    }
   }
 
   onTypeChange(): void {
@@ -266,21 +268,22 @@ export class CustomerFormComponent implements OnInit, OnChanges {
       }
     }
 
-    if (this.customer) {
+    if (this.customer()) {
       this.patchForm();
     }
   }
 
   private patchForm(): void {
-    if (!this.customer) return;
+    const c = this.customer();
+    if (!c) return;
     this.form.patchValue({
-      type: this.customer.type,
-      document: this.customer.document,
-      displayName: this.customer.displayName,
+      type: c.type,
+      document: c.document,
+      displayName: c.displayName,
     });
     this.onTypeChange();
 
-    if (this.editMode) {
+    if (this.editMode()) {
       this.form.get('type')?.disable();
       this.form.get('document')?.disable();
     }

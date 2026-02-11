@@ -176,4 +176,46 @@ describe('SafeFieldRendererHostComponent', () => {
       expect(compiled.querySelector('mat-form-field')).toBeTruthy();
     });
   });
+
+  describe('missing registration (C11)', () => {
+    it('should report error when no registration is provided', () => {
+      component.fieldKey = 'test-field';
+      // registration is not set (undefined)
+      fixture.detectChanges();
+      component.ngOnChanges({
+        registration: {
+          currentValue: undefined,
+          previousValue: undefined,
+          firstChange: true,
+          isFirstChange: () => true,
+        },
+      });
+      fixture.detectChanges();
+
+      expect(errorReporter.report).toHaveBeenCalledWith(
+        'test-field',
+        expect.any(Error),
+      );
+      expect(component.useFallback()).toBe(true);
+    });
+
+    it('should use "unknown" as identifier when fieldKey is empty', () => {
+      component.fieldKey = '';
+      fixture.detectChanges();
+      component.ngOnChanges({
+        registration: {
+          currentValue: undefined,
+          previousValue: undefined,
+          firstChange: true,
+          isFirstChange: () => true,
+        },
+      });
+      fixture.detectChanges();
+
+      expect(errorReporter.report).toHaveBeenCalledWith(
+        'unknown',
+        expect.any(Error),
+      );
+    });
+  });
 });

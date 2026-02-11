@@ -7,11 +7,14 @@ describe('TranslatePipe', () => {
   let pipe: TranslatePipe;
   let i18nService: jest.Mocked<CustomerI18nService>;
   let localeSignal: WritableSignal<string>;
+  let versionSignal: WritableSignal<number>;
 
   beforeEach(() => {
     localeSignal = signal('pt-BR');
+    versionSignal = signal(0);
     const mockService = {
       currentLocale: localeSignal.asReadonly(),
+      translationsVersion: versionSignal.asReadonly(),
       translate: jest.fn((key: string, ...params: (string | number)[]) => {
         const locale = localeSignal();
         if (locale === 'pt-BR') {
@@ -69,6 +72,16 @@ describe('TranslatePipe', () => {
     const second = pipe.transform('label.customer');
     expect(second).toBe('Customer');
 
+    expect(i18nService.translate).toHaveBeenCalledTimes(2);
+  });
+
+  it('should invalidate cache when translations version changes (C5)', () => {
+    pipe.transform('label.customer');
+    expect(i18nService.translate).toHaveBeenCalledTimes(1);
+
+    // Same key and locale but version bumped
+    versionSignal.set(1);
+    pipe.transform('label.customer');
     expect(i18nService.translate).toHaveBeenCalledTimes(2);
   });
 });

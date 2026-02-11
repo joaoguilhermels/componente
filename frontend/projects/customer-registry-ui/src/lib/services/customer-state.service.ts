@@ -1,4 +1,4 @@
-import { computed, inject, Injectable, signal } from '@angular/core';
+import { computed, inject, Injectable, OnDestroy, signal } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { Customer, CustomerSearchParams } from '../models/customer.model';
 import { CustomerRegistryApiClient } from './customer-registry-api-client.service';
@@ -11,7 +11,7 @@ import { CustomerRegistryApiClient } from './customer-registry-api-client.servic
  * for fine-grained change detection (OnPush).
  */
 @Injectable({ providedIn: 'root' })
-export class CustomerStateService {
+export class CustomerStateService implements OnDestroy {
   private readonly api = inject(CustomerRegistryApiClient);
 
   /** Subscription for the current search operation, cancelled on new request */
@@ -64,6 +64,11 @@ export class CustomerStateService {
 
   /** Whether the customer list is empty */
   readonly isEmpty = computed(() => this._customers().length === 0 && !this._loading());
+
+  ngOnDestroy(): void {
+    this.searchSub?.unsubscribe();
+    this.detailSub?.unsubscribe();
+  }
 
   /** Load customers with optional search params */
   loadCustomers(params: CustomerSearchParams = {}): void {

@@ -52,6 +52,19 @@ class CustomerRegistryObservabilityAutoConfigurationTest {
                 assertThat(context).doesNotHaveBean(CustomerRegistryMetrics.class));
     }
 
+
+    @Test
+    @DisplayName("observability respects enabled master switch even when feature is on")
+    void respectsEnabledMasterSwitch() {
+        contextRunner
+            .withPropertyValues(
+                "customer.registry.enabled=false",
+                "customer.registry.features.observability=true")
+            .withUserConfiguration(MicrometerConfig.class)
+            .run(context ->
+                assertThat(context).doesNotHaveBean(CustomerRegistryMetrics.class));
+    }
+
     @Configuration
     static class MicrometerConfig {
         @Bean

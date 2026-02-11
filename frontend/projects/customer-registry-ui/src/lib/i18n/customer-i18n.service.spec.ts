@@ -92,6 +92,67 @@ describe('CustomerI18nService', () => {
     });
   });
 
+  describe('onMissingKey callback', () => {
+    it('should call onMissingKey when translation is not found', () => {
+      const onMissingKey = jest.fn().mockReturnValue('Fallback Value');
+      TestBed.configureTestingModule({
+        providers: [
+          CustomerI18nService,
+          {
+            provide: CUSTOMER_REGISTRY_UI_CONFIG,
+            useValue: { ...DEFAULT_CONFIG, locale: 'pt-BR', onMissingKey },
+          },
+          { provide: CUSTOMER_I18N_OVERRIDES, useValue: {} },
+        ],
+      });
+      const service = TestBed.inject(CustomerI18nService);
+
+      const result = service.translate('nonexistent.key');
+
+      expect(onMissingKey).toHaveBeenCalledWith('nonexistent.key', 'pt-BR');
+      expect(result).toBe('Fallback Value');
+    });
+
+    it('should fall back to raw key when onMissingKey returns undefined', () => {
+      const onMissingKey = jest.fn().mockReturnValue(undefined);
+      TestBed.configureTestingModule({
+        providers: [
+          CustomerI18nService,
+          {
+            provide: CUSTOMER_REGISTRY_UI_CONFIG,
+            useValue: { ...DEFAULT_CONFIG, locale: 'pt-BR', onMissingKey },
+          },
+          { provide: CUSTOMER_I18N_OVERRIDES, useValue: {} },
+        ],
+      });
+      const service = TestBed.inject(CustomerI18nService);
+
+      const result = service.translate('nonexistent.key');
+
+      expect(onMissingKey).toHaveBeenCalledWith('nonexistent.key', 'pt-BR');
+      expect(result).toBe('nonexistent.key');
+    });
+
+    it('should not call onMissingKey for existing keys', () => {
+      const onMissingKey = jest.fn();
+      TestBed.configureTestingModule({
+        providers: [
+          CustomerI18nService,
+          {
+            provide: CUSTOMER_REGISTRY_UI_CONFIG,
+            useValue: { ...DEFAULT_CONFIG, locale: 'pt-BR', onMissingKey },
+          },
+          { provide: CUSTOMER_I18N_OVERRIDES, useValue: {} },
+        ],
+      });
+      const service = TestBed.inject(CustomerI18nService);
+
+      service.translate('label.customer');
+
+      expect(onMissingKey).not.toHaveBeenCalled();
+    });
+  });
+
   describe('translations signal', () => {
     it('should recompute translations when locale changes', () => {
       const service = createService('pt-BR');

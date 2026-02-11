@@ -24,6 +24,10 @@ export class CustomerI18nService {
   /** Current locale signal — reactive, can be changed at runtime */
   readonly currentLocale = signal<string>(this.config.locale);
 
+  /** Monotonically increasing version counter, incremented on every locale or override change */
+  private readonly _translationsVersion = signal(0);
+  readonly translationsVersion = this._translationsVersion.asReadonly();
+
   /** Computed translations map for the current locale */
   readonly translations = computed<Record<string, string>>(() => {
     const locale = this.currentLocale();
@@ -39,12 +43,22 @@ export class CustomerI18nService {
     let value = map[key];
 
     if (value === undefined) {
-      if (isDevMode()) {
-        console.warn(
-          `[CustomerRegistryUI i18n] Missing translation key "${key}" for locale "${this.currentLocale()}"`
-        );
+      const locale = this.currentLocale();
+      const onMissingKey = this.config.onMissingKey;
+      if (onMissingKey) {
+        const override = onMissingKey(key, locale);
+        if (override !== undefined) {
+          value = override;
+        }
       }
-      value = key;
+      if (value === undefined) {
+        if (isDevMode()) {
+          console.warn(
+            `[CustomerRegistryUI i18n] Missing translation key "${key}" for locale "${locale}"`
+          );
+        }
+        value = key;
+      }
     }
 
     params.forEach((param, i) => {
@@ -56,6 +70,7 @@ export class CustomerI18nService {
   /** Switch the active locale at runtime */
   setLocale(locale: string): void {
     this.currentLocale.set(locale);
+    this._translationsVersion.update(v => v + 1);
   }
 
   private resolveTranslations(locale: string): Record<string, string> {

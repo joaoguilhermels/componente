@@ -29,7 +29,8 @@ public class CustomerRegistryPersistenceAutoConfiguration {
 
     @Bean("customerRegistryLiquibase")
     @ConditionalOnProperty(
-        name = "customer.registry.features.migrations",
+        prefix = "customer.registry",
+        name = {"enabled", "features.migrations"},
         havingValue = "true"
     )
     @ConditionalOnClass(SpringLiquibase.class)

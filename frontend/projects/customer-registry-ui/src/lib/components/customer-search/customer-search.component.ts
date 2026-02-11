@@ -6,7 +6,7 @@ import {
   Output,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
+import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
@@ -14,18 +14,14 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { TranslatePipe } from '../../i18n/translate.pipe';
 import { CUSTOMER_REGISTRY_UI_CONFIG } from '../../tokens';
-import {
-  CustomerSearchParams,
-  CustomerStatus,
-  CustomerType,
-} from '../../models/customer.model';
+import { CustomerSearchParams } from '../../models/customer.model';
 
 @Component({
   selector: 'crui-customer-search',
   standalone: true,
   imports: [
     CommonModule,
-    FormsModule,
+    ReactiveFormsModule,
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule,
@@ -36,10 +32,10 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (isVisible) {
-      <div class="crui-search-container">
+      <div class="crui-search-container" [formGroup]="searchForm">
         <mat-form-field appearance="outline" class="crui-search-field">
           <mat-label>{{ 'field.type' | translate }}</mat-label>
-          <mat-select [(ngModel)]="searchType" name="type">
+          <mat-select formControlName="type">
             <mat-option [value]="undefined">{{ 'label.all' | translate }}</mat-option>
             <mat-option value="PF">{{ 'customer.type.PF' | translate }}</mat-option>
             <mat-option value="PJ">{{ 'customer.type.PJ' | translate }}</mat-option>
@@ -48,7 +44,7 @@ import {
 
         <mat-form-field appearance="outline" class="crui-search-field">
           <mat-label>{{ 'field.status' | translate }}</mat-label>
-          <mat-select [(ngModel)]="searchStatus" name="status">
+          <mat-select formControlName="status">
             <mat-option [value]="undefined">{{ 'label.all' | translate }}</mat-option>
             <mat-option value="DRAFT">{{ 'customer.status.DRAFT' | translate }}</mat-option>
             <mat-option value="ACTIVE">{{ 'customer.status.ACTIVE' | translate }}</mat-option>
@@ -59,12 +55,12 @@ import {
 
         <mat-form-field appearance="outline" class="crui-search-field">
           <mat-label>{{ 'field.document' | translate }}</mat-label>
-          <input matInput [(ngModel)]="searchDocument" name="document" />
+          <input matInput formControlName="document" />
         </mat-form-field>
 
         <mat-form-field appearance="outline" class="crui-search-field">
           <mat-label>{{ 'field.displayName' | translate }}</mat-label>
-          <input matInput [(ngModel)]="searchDisplayName" name="displayName" />
+          <input matInput formControlName="displayName" />
         </mat-form-field>
 
         <div class="crui-search-actions">
@@ -101,6 +97,7 @@ import {
 })
 export class CustomerSearchComponent {
   private readonly config = inject(CUSTOMER_REGISTRY_UI_CONFIG);
+  private readonly fb = inject(FormBuilder);
 
   /** Emits the search parameters when the user clicks the search button */
   @Output() readonly search = new EventEmitter<CustomerSearchParams>();
@@ -108,29 +105,34 @@ export class CustomerSearchComponent {
   /** Emits when the user clicks the clear/reset button */
   @Output() readonly reset = new EventEmitter<void>();
 
-  searchType?: CustomerType;
-  searchStatus?: CustomerStatus;
-  searchDocument = '';
-  searchDisplayName = '';
+  readonly searchForm: FormGroup = this.fb.group({
+    type: [undefined],
+    status: [undefined],
+    document: [''],
+    displayName: [''],
+  });
 
   get isVisible(): boolean {
     return this.config.features.search;
   }
 
   onSearch(): void {
+    const v = this.searchForm.value;
     const params: CustomerSearchParams = {};
-    if (this.searchType) params.type = this.searchType;
-    if (this.searchStatus) params.status = this.searchStatus;
-    if (this.searchDocument.trim()) params.document = this.searchDocument.trim();
-    if (this.searchDisplayName.trim()) params.displayName = this.searchDisplayName.trim();
+    if (v.type) params.type = v.type;
+    if (v.status) params.status = v.status;
+    if (v.document?.trim()) params.document = v.document.trim();
+    if (v.displayName?.trim()) params.displayName = v.displayName.trim();
     this.search.emit(params);
   }
 
   onReset(): void {
-    this.searchType = undefined;
-    this.searchStatus = undefined;
-    this.searchDocument = '';
-    this.searchDisplayName = '';
+    this.searchForm.reset({
+      type: undefined,
+      status: undefined,
+      document: '',
+      displayName: '',
+    });
     this.reset.emit();
   }
 }

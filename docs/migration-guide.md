@@ -1039,6 +1039,56 @@ com.yourorg.yourservice.autoconfigure.YourServiceObservabilityAutoConfiguration
 Order in this file does NOT matter -- Spring resolves ordering from the `@AutoConfiguration`
 `before`/`after` attributes.
 
+### Property Gate Convention
+
+All auto-configuration classes MUST use the **dual-gate pattern**:
+
+```java
+@ConditionalOnProperty(
+    prefix = "customer.registry",
+    name = {"enabled", "features.<feature-name>"},
+    havingValue = "true"
+)
+```
+
+This ensures that:
+1. The **master switch** (`enabled`) disables all features at once
+2. Each **feature flag** can be toggled independently
+3. Both must be `true` for the auto-configuration to activate
+
+Bean-level `@ConditionalOnProperty` within an auto-config (e.g., Liquibase in the persistence
+auto-config) should also include the `enabled` gate for defense-in-depth, preventing bean
+registration even if the parent class-level condition is somehow bypassed.
+
+The core auto-configuration is the exception — it uses only the master switch
+(`name = "enabled"`) because it provides fallback beans that must be available whenever
+the registry is enabled, regardless of which features are active.
+
+> **Note on property naming**: Feature flag property names use **kebab-case** in YAML
+> (`persistence-jpa`, `publish-events`, `rest-api`). Spring Boot's relaxed binding
+> automatically maps these to the camelCase fields in the `Features` class
+> (`persistenceJpa`, `publishEvents`, `restApi`). Java annotations always reference
+> the kebab-case form since they match the YAML keys. There is no risk of
+> `matchIfMissing` appearing in kebab-case — it is a Java annotation attribute.
+
+### CLI Verification Heuristics
+
+The migration CLI uses static analysis heuristics (not a full Java parser) to verify
+scorecard dimensions. Known limitations:
+
+- **Comment detection**: Uses a single-pass heuristic that handles `//`, `/* */`, and
+  Javadoc blocks. Deeply nested string literals containing comment delimiters (extremely
+  rare in practice) may cause false positives.
+- **@Bean/@ConditionalOnMissingBean pairing**: Coverage-based check within a 5-line
+  effective distance. Annotations separated by large Javadoc blocks may appear unpaired
+  even though they are logically associated.
+- **Interface detection**: Searches for the `interface` keyword in non-comment lines.
+  Interfaces inside inner classes or annotations are detected correctly, but dynamically
+  generated interfaces are not.
+
+These heuristics are deliberately conservative — they may produce false warnings but should
+not produce false passes. If a check fails unexpectedly, use `--verbose` for full details.
+
 ### Testing Auto-Configuration
 
 Use `ApplicationContextRunner` to verify conditional behavior:
@@ -1157,6 +1207,52 @@ does not provide translations.
 - CSS custom properties: `--crui-*` prefix
 - Avoid naming `@Input()` properties `formControl` -- it collides with Angular's
   `FormControlDirective` selector. Use `control` instead.
+
+### Feature Flag Coverage Matrix
+
+Not all feature flags affect all views. The table below documents which Angular
+views/components are affected by each flag in the current version:
+
+| Feature Flag | List View | Detail View | Form | Search |
+|-------------|-----------|-------------|------|--------|
+| `search` | - | - | - | Controls visibility |
+| `addresses` | - | Controls address section | Not yet supported | - |
+| `contacts` | - | Controls contact section | Not yet supported | - |
+| `inlineEdit` | Reserved | Reserved | Reserved | Reserved |
+
+**Key**:
+- "Controls ..." = flag toggles visibility/behavior of that section
+- "Not yet supported" = flag exists but has no effect in this view (future work)
+- "Reserved" = flag is defined but not currently implemented
+- "-" = flag has no effect on this view
+
+When migrating a service with UI, map your feature flags to this matrix and document any
+gaps. The `inlineEdit` flag is reserved for a future inline-editing capability.
+
+### Public API Integration Guide
+
+The Angular library exposes these entry points for host application integration:
+
+**Providers** (use in `app.config.ts` or module providers):
+- `provideCustomerRegistryUi(config)` — main configuration provider
+- `provideCustomerRegistryI18n(overrides)` — i18n overrides
+- `provideCustomerRegistryRenderers(registrations)` — custom field renderers
+
+**Components** (use in templates):
+- `CustomerListComponent` — paginated customer table
+- `CustomerSearchComponent` — search form with type/status/document filters
+- `CustomerFormComponent` — create/edit form with validation
+- `CustomerDetailsComponent` — read-only detail view with addresses and contacts
+
+**Services** (inject for programmatic access):
+- `CustomerStateService` — signal-based state management
+- `CustomerI18nService` — locale management and translation
+- `CustomerRegistryApiClient` — HTTP client (configurable base URL)
+
+**Tokens** (override for customization):
+- `CUSTOMER_REGISTRY_UI_CONFIG` — full configuration object
+- `CUSTOMER_I18N_OVERRIDES` — translation overrides per locale
+- `CUSTOMER_UI_RENDERER_ERROR_REPORTER` — error reporting hook
 
 ---
 

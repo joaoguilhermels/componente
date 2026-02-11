@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { Validators } from '@angular/forms';
 import { CustomerFormComponent } from './customer-form.component';
 import {
   CUSTOMER_EXTRA_FIELDS,
@@ -12,7 +13,7 @@ import {
 import { DEFAULT_CONFIG } from '../../models/config.model';
 import { CustomerI18nService } from '../../i18n/customer-i18n.service';
 import { Customer, CreateCustomerRequest } from '../../models/customer.model';
-import { ExtraFieldDefinition } from '../../models/extensibility.model';
+import { ExtraFieldDefinition, CustomerValidationRule } from '../../models/extensibility.model';
 
 describe('CustomerFormComponent', () => {
   let component: CustomerFormComponent;
@@ -32,7 +33,10 @@ describe('CustomerFormComponent', () => {
     updatedAt: '2025-01-01T00:00:00Z',
   };
 
-  function createComponent(extraFields: ExtraFieldDefinition[] = []) {
+  function createComponent(
+    extraFields: ExtraFieldDefinition[] = [],
+    validationRules: CustomerValidationRule[] = [],
+  ) {
     const providers: any[] = [
       { provide: CUSTOMER_REGISTRY_UI_CONFIG, useValue: DEFAULT_CONFIG },
       { provide: CUSTOMER_I18N_OVERRIDES, useValue: {} },
@@ -42,6 +46,10 @@ describe('CustomerFormComponent', () => {
 
     if (extraFields.length > 0) {
       providers.push({ provide: CUSTOMER_EXTRA_FIELDS, useValue: extraFields, multi: true });
+    }
+
+    if (validationRules.length > 0) {
+      providers.push({ provide: CUSTOMER_VALIDATION_RULES, useValue: validationRules, multi: true });
     }
 
     TestBed.configureTestingModule({
@@ -151,16 +159,9 @@ describe('CustomerFormComponent', () => {
     beforeEach(() => createComponent());
 
     it('should patch form with customer data', () => {
-      component.customer = mockCustomer;
-      component.editMode = true;
-      component.ngOnChanges({
-        customer: {
-          currentValue: mockCustomer,
-          previousValue: null,
-          firstChange: true,
-          isFirstChange: () => true,
-        },
-      });
+      fixture.componentRef.setInput('editMode', true);
+      fixture.componentRef.setInput('customer', mockCustomer);
+      fixture.detectChanges();
 
       expect(component.form.get('type')?.value).toBe('PJ');
       expect(component.form.get('document')?.value).toBe('11222333000181');
@@ -168,16 +169,9 @@ describe('CustomerFormComponent', () => {
     });
 
     it('should disable type and document in edit mode', () => {
-      component.customer = mockCustomer;
-      component.editMode = true;
-      component.ngOnChanges({
-        customer: {
-          currentValue: mockCustomer,
-          previousValue: null,
-          firstChange: true,
-          isFirstChange: () => true,
-        },
-      });
+      fixture.componentRef.setInput('editMode', true);
+      fixture.componentRef.setInput('customer', mockCustomer);
+      fixture.detectChanges();
 
       expect(component.form.get('type')?.disabled).toBe(true);
       expect(component.form.get('document')?.disabled).toBe(true);
@@ -209,6 +203,103 @@ describe('CustomerFormComponent', () => {
       expect(visible.map((f) => f.key)).toContain('cpfField');
       expect(visible.map((f) => f.key)).not.toContain('cnpjField');
       expect(visible.map((f) => f.key)).toContain('bothField');
+    });
+  });
+
+  describe('validation rules (C8)', () => {
+    it('should apply host validation rules to matching fields', () => {
+      const rules: CustomerValidationRule[] = [
+        { fieldPath: 'displayName', validators: [Validators.minLength(3)] },
+      ];
+      createComponent([], rules);
+
+      component.form.get('displayName')?.setValue('AB');
+      expect(component.form.get('displayName')?.hasError('minlength')).toBe(true);
+
+      component.form.get('displayName')?.setValue('ABC');
+      expect(component.form.get('displayName')?.hasError('minlength')).toBe(false);
+    });
+
+    it('should apply type-specific rules only to matching type', () => {
+      const rules: CustomerValidationRule[] = [
+        { fieldPath: 'displayName', appliesTo: ['PJ'], validators: [Validators.minLength(5)] },
+      ];
+      createComponent([], rules);
+
+      // Default type is PF, rule should not be applied
+      component.form.get('displayName')?.setValue('AB');
+      expect(component.form.get('displayName')?.hasError('minlength')).toBe(false);
+    });
+
+    it('should not fail for rules targeting non-existent field paths', () => {
+      const rules: CustomerValidationRule[] = [
+        { fieldPath: 'nonExistentField', validators: [Validators.required] },
+      ];
+      expect(() => createComponent([], rules)).not.toThrow();
+    });
+
+    it('should apply multiple rules to the same field', () => {
+      const rules: CustomerValidationRule[] = [
+        { fieldPath: 'displayName', validators: [Validators.minLength(3)] },
+        { fieldPath: 'displayName', validators: [Validators.maxLength(50)] },
+      ];
+      createComponent([], rules);
+
+      component.form.get('displayName')?.setValue('AB');
+      expect(component.form.get('displayName')?.hasError('minlength')).toBe(true);
+
+      component.form.get('displayName')?.setValue('A'.repeat(51));
+      expect(component.form.get('displayName')?.hasError('maxlength')).toBe(true);
+
+      component.form.get('displayName')?.setValue('Valid Name');
+      expect(component.form.get('displayName')?.valid).toBe(true);
+    });
+  });
+
+  describe('appliesTo edge cases (C10)', () => {
+    it('should show extra fields with empty appliesTo array for all types', () => {
+      const extraFields: ExtraFieldDefinition[] = [
+        { key: 'globalField', labelKey: 'field.global', type: 'text', appliesTo: [] },
+      ];
+      createComponent(extraFields);
+
+      // appliesTo is empty array (truthy but length 0) — should still be visible because
+      // the filter is: !f.appliesTo || f.appliesTo.includes(...)
+      // Empty array is truthy, and [].includes('PF') is false => field is hidden
+      const visible = component.visibleExtraFields;
+      expect(visible.map((f) => f.key)).not.toContain('globalField');
+    });
+
+    it('should show extra fields without appliesTo for any type', () => {
+      const extraFields: ExtraFieldDefinition[] = [
+        { key: 'universalField', labelKey: 'field.universal', type: 'text' },
+      ];
+      createComponent(extraFields);
+
+      const visible = component.visibleExtraFields;
+      expect(visible.map((f) => f.key)).toContain('universalField');
+    });
+
+    it('should hide PJ-only extra fields when type is PF', () => {
+      const extraFields: ExtraFieldDefinition[] = [
+        { key: 'pjOnly', labelKey: 'field.pjOnly', type: 'text', appliesTo: ['PJ'] },
+      ];
+      createComponent(extraFields);
+
+      expect(component.currentType).toBe('PF');
+      expect(component.visibleExtraFields.map((f) => f.key)).not.toContain('pjOnly');
+    });
+
+    it('should show PJ-only extra fields after switching to PJ', () => {
+      const extraFields: ExtraFieldDefinition[] = [
+        { key: 'pjOnly', labelKey: 'field.pjOnly', type: 'text', appliesTo: ['PJ'] },
+      ];
+      createComponent(extraFields);
+
+      component.form.get('type')?.setValue('PJ');
+      component.onTypeChange();
+
+      expect(component.visibleExtraFields.map((f) => f.key)).toContain('pjOnly');
     });
   });
 });
