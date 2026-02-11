@@ -46,16 +46,26 @@ public class AttributeMigrationService {
     private final DataSource dataSource;
     private final List<AttributeSchemaMigration> migrations;
     private final boolean strict;
+    private final long advisoryLockKey;
 
     public AttributeMigrationService(
             DataSource dataSource,
             List<AttributeSchemaMigration> migrations,
             boolean strict) {
+        this(dataSource, migrations, strict, PostgresAdvisoryLock.DEFAULT_LOCK_KEY);
+    }
+
+    public AttributeMigrationService(
+            DataSource dataSource,
+            List<AttributeSchemaMigration> migrations,
+            boolean strict,
+            long advisoryLockKey) {
         this.dataSource = dataSource;
         this.migrations = migrations.stream()
             .sorted(Comparator.comparingInt(AttributeSchemaMigration::sourceVersion))
             .toList();
         this.strict = strict;
+        this.advisoryLockKey = advisoryLockKey;
     }
 
     /**
@@ -69,7 +79,7 @@ public class AttributeMigrationService {
             return 0;
         }
 
-        try (PostgresAdvisoryLock lock = new PostgresAdvisoryLock(dataSource)) {
+        try (PostgresAdvisoryLock lock = new PostgresAdvisoryLock(dataSource, advisoryLockKey)) {
             if (!lock.tryAcquire()) {
                 if (strict) {
                     throw new IllegalStateException(

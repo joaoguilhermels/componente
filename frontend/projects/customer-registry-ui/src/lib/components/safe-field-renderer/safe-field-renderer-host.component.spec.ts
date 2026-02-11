@@ -177,6 +177,96 @@ describe('SafeFieldRendererHostComponent', () => {
     });
   });
 
+  describe('bidirectional fallback sync (A1)', () => {
+    beforeEach(() => {
+      const registration: FieldRendererRegistration = {
+        rendererId: 'bad-renderer',
+        component: BadRendererComponent,
+      };
+      component.registration = registration;
+      fixture.detectChanges();
+      component.ngOnChanges({
+        registration: {
+          currentValue: registration,
+          previousValue: undefined,
+          firstChange: true,
+          isFirstChange: () => true,
+        },
+      });
+      fixture.detectChanges();
+    });
+
+    it('should sync external control updates to fallback', () => {
+      expect(component.useFallback()).toBe(true);
+
+      component.control.setValue('updated-externally');
+
+      expect(component.fallbackControl.value).toBe('updated-externally');
+    });
+
+    it('should sync fallback updates to the external control', () => {
+      expect(component.useFallback()).toBe(true);
+
+      component.fallbackControl.setValue('from-fallback');
+
+      expect(component.control.value).toBe('from-fallback');
+    });
+
+    it('should not cause infinite loop between synced controls', () => {
+      expect(component.useFallback()).toBe(true);
+
+      const controlSetSpy = jest.spyOn(component.control, 'setValue');
+      const fallbackSetSpy = jest.spyOn(component.fallbackControl, 'setValue');
+
+      component.control.setValue('trigger');
+
+      // control.setValue called once (by test), fallback.setValue called once (by subscription with emitEvent:false)
+      // The emitEvent:false prevents the fallback change from re-triggering control.setValue
+      expect(controlSetSpy).toHaveBeenCalledTimes(1);
+      expect(fallbackSetSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('context injection error fallback (B5)', () => {
+    it('should activate fallback when context assignment throws', () => {
+      @Component({
+        selector: 'test-readonly-context-renderer',
+        standalone: true,
+        template: '<span>readonly</span>',
+      })
+      class ReadonlyContextRendererComponent {
+        get context(): unknown {
+          return {};
+        }
+        set context(_: unknown) {
+          throw new Error('Cannot set context');
+        }
+      }
+
+      const registration: FieldRendererRegistration = {
+        rendererId: 'readonly-context',
+        component: ReadonlyContextRendererComponent,
+      };
+      component.registration = registration;
+      fixture.detectChanges();
+      component.ngOnChanges({
+        registration: {
+          currentValue: registration,
+          previousValue: undefined,
+          firstChange: true,
+          isFirstChange: () => true,
+        },
+      });
+      fixture.detectChanges();
+
+      expect(component.useFallback()).toBe(true);
+      expect(errorReporter.report).toHaveBeenCalledWith(
+        'readonly-context',
+        expect.any(Error),
+      );
+    });
+  });
+
   describe('missing registration (C11)', () => {
     it('should report error when no registration is provided', () => {
       component.fieldKey = 'test-field';

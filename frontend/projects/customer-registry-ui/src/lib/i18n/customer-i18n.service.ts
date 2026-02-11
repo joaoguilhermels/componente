@@ -15,6 +15,12 @@ const BUILT_IN_LOCALES: Record<string, Record<string, string>> = {
  * Signal-based i18n service for the Customer Registry UI library.
  *
  * Fallback chain: host overrides → built-in[locale] → built-in['en'] → built-in['pt-BR'] → key
+ *
+ * **Limitations**: This service supports positional parameter substitution (`{0}`, `{1}`, ...)
+ * only. It does **not** support ICU MessageFormat, pluralization rules, or gender-aware
+ * translations. For those features, host applications should use a full i18n library
+ * (e.g., `@ngx-translate/core` or Angular's built-in i18n) and provide translations
+ * via `CUSTOMER_I18N_OVERRIDES`.
  */
 @Injectable({ providedIn: 'root' })
 export class CustomerI18nService {

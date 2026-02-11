@@ -23,7 +23,7 @@
 
 **Total: 100% (Automated)**
 
-### Automated vs. Manual Dimensions
+### Scoring: 13 Automated + 10 Manual = 23 Dimensions
 
 > **13 Automated Dimensions** (table above) are verified by the migration CLI (`migration_cli.py verify`).
 > These check structural patterns: package layout, imports, annotations, file existence, and component conventions.

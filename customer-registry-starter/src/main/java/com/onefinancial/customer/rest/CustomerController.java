@@ -1,5 +1,6 @@
 package com.onefinancial.customer.rest;
 
+import com.onefinancial.customer.core.exception.DocumentValidationException;
 import com.onefinancial.customer.core.model.Customer;
 import com.onefinancial.customer.core.model.CustomerPage;
 import com.onefinancial.customer.core.model.CustomerStatus;
@@ -62,9 +63,21 @@ class CustomerController {
     @GetMapping("/by-document/{document}")
     ResponseEntity<CustomerResponse> findByDocument(@PathVariable String document) {
         // Try PF first (11 digits), then PJ (14 digits)
-        CustomerType type = document.replaceAll("[.\\-/]", "").length() <= 11
+        CustomerType primaryType = document.replaceAll("[.\\-/]", "").length() <= 11
             ? CustomerType.PF : CustomerType.PJ;
-        Document doc = new Document(type, document);
+        CustomerType alternateType = primaryType == CustomerType.PF
+            ? CustomerType.PJ : CustomerType.PF;
+
+        Document doc;
+        try {
+            doc = new Document(primaryType, document);
+        } catch (DocumentValidationException e) {
+            try {
+                doc = new Document(alternateType, document);
+            } catch (DocumentValidationException e2) {
+                throw e; // Rethrow original — both types failed
+            }
+        }
 
         return service.findByDocument(doc)
             .map(CustomerResponse::from)

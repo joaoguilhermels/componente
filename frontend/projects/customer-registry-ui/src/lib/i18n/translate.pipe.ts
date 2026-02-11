@@ -28,7 +28,7 @@ export class TranslatePipe implements PipeTransform {
   transform(key: string, ...params: (string | number)[]): string {
     const locale = this.i18n.currentLocale();
     const version = this.i18n.translationsVersion();
-    const paramsKey = params.length > 0 ? JSON.stringify(params) : '';
+    const paramsKey = params.length > 0 ? params.join('|') : '';
 
     if (
       key === this.cachedKey &&

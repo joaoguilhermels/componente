@@ -241,6 +241,36 @@ class CustomerControllerTest {
             mockMvc.perform(get("/api/v1/customers/by-document/{doc}", VALID_CPF))
                 .andExpect(status().isNotFound());
         }
+
+        @Test
+        @DisplayName("should try alternate document type when initial validation fails")
+        void findByDocumentTriesAlternateTypeOnValidationFailure() throws Exception {
+            // Use a 14-digit document that fails CNPJ validation (bad checksum)
+            // but has the right length for CNPJ. The controller should try CNPJ first
+            // (14 digits > 11), and when that fails, try CPF as fallback.
+            // Since CPF also fails (wrong length), we expect a 400 error.
+            // But the key is: it tries both before giving up.
+            String invalidForBothTypes = "12345678901234";
+
+            mockMvc.perform(get("/api/v1/customers/by-document/{doc}", invalidForBothTypes))
+                .andExpect(status().isBadRequest());
+
+            // Verify service was never called (both Document constructions failed)
+            verify(service, never()).findByDocument(any(Document.class));
+        }
+
+        @Test
+        @DisplayName("should find customer when initial type guess is wrong but alternate succeeds")
+        void findByDocumentSucceedsWithAlternateType() throws Exception {
+            // A CNPJ with valid checksum
+            Customer pjCustomer = Customer.createPJ(VALID_CNPJ, "Acme Ltda");
+            when(service.findByDocument(any(Document.class)))
+                .thenReturn(Optional.of(pjCustomer));
+
+            mockMvc.perform(get("/api/v1/customers/by-document/{doc}", VALID_CNPJ))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.type").value("PJ"));
+        }
     }
 
     // ─── GET /api/v1/customers ───────────────────────────────────

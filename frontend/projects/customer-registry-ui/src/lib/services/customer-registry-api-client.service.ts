@@ -13,6 +13,10 @@ import { CUSTOMER_REGISTRY_UI_CONFIG } from '../tokens';
 /**
  * HTTP client for the Customer Registry REST API.
  * Base URL is configured via CUSTOMER_REGISTRY_UI_CONFIG.
+ *
+ * **Timeout / Retry**: This client does not configure HTTP timeouts or retry logic.
+ * Host applications should provide an `HttpInterceptor` to handle timeouts, retries,
+ * and circuit-breaking as appropriate for their environment.
  */
 @Injectable({ providedIn: 'root' })
 export class CustomerRegistryApiClient {

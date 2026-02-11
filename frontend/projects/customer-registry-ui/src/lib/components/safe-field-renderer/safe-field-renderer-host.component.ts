@@ -83,6 +83,7 @@ export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
   private readonly errorReporter = inject(CUSTOMER_UI_RENDERER_ERROR_REPORTER);
   private readonly errorHandler = inject(ErrorHandler);
   private fallbackSubscription?: Subscription;
+  private controlSubscription?: Subscription;
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['registration'] || changes['control']) {
@@ -99,6 +100,7 @@ export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
 
   ngOnDestroy(): void {
     this.fallbackSubscription?.unsubscribe();
+    this.controlSubscription?.unsubscribe();
     this.rendererHost?.clear();
   }
 
@@ -135,7 +137,13 @@ export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
       // Try to set context if the component has an input for it
       const instance = componentRef.instance as Record<string, unknown>;
       if ('context' in instance) {
-        instance['context'] = context;
+        try {
+          instance['context'] = context;
+        } catch (ctxError) {
+          this.errorHandler.handleError(ctxError);
+          this.activateFallback(this.registration.rendererId, ctxError);
+          return;
+        }
       }
 
       componentRef.changeDetectorRef.detectChanges();
@@ -152,9 +160,15 @@ export class SafeFieldRendererHostComponent implements OnChanges, OnDestroy {
     // Unsubscribe previous fallback sync before creating a new one
     this.fallbackSubscription?.unsubscribe();
 
-    // Sync fallback control with the form control
+    // Sync fallback control -> form control (with emitEvent: false to prevent loops)
     this.fallbackSubscription = this.fallbackControl.valueChanges.subscribe((value) => {
-      this.control?.setValue(value);
+      this.control?.setValue(value, { emitEvent: false });
+    });
+
+    // Sync form control -> fallback control (reverse direction)
+    this.controlSubscription?.unsubscribe();
+    this.controlSubscription = this.control?.valueChanges.subscribe((value) => {
+      this.fallbackControl.setValue(value, { emitEvent: false });
     });
 
     if (error) {

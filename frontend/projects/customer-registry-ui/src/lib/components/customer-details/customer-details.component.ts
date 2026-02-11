@@ -159,12 +159,18 @@ export class CustomerDetailsComponent {
   /** Emits when the user clicks the back button */
   @Output() readonly back = new EventEmitter<void>();
 
-  /** Whether the addresses section is enabled by the feature flag */
+  /**
+   * Whether the addresses section is enabled by the `addresses` feature flag.
+   * Config is injected once via `useValue`; runtime changes are not reflected.
+   */
   get showAddresses(): boolean {
     return this.config.features.addresses;
   }
 
-  /** Whether the contacts section is enabled by the feature flag */
+  /**
+   * Whether the contacts section is enabled by the `contacts` feature flag.
+   * Config is injected once via `useValue`; runtime changes are not reflected.
+   */
   get showContacts(): boolean {
     return this.config.features.contacts;
   }

@@ -8,6 +8,7 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 class CustomerRegistryMigrationAutoConfigurationTest {
 
@@ -74,6 +75,40 @@ class CustomerRegistryMigrationAutoConfigurationTest {
                 assertThat(context).doesNotHaveBean(AttributeMigrationService.class);
                 assertThat(context).doesNotHaveBean(
                     CustomerRegistryMigrationAutoConfiguration.AttributeMigrationStartupTrigger.class);
+            });
+    }
+
+    @Test
+    @DisplayName("custom AttributeMigrationService replaces default auto-configured bean")
+    void shouldAllowCustomMigrationServiceToReplaceDefault() {
+        AttributeMigrationService customService = mock(AttributeMigrationService.class);
+
+        contextRunner
+            .withPropertyValues(
+                "customer.registry.enabled=true",
+                "customer.registry.features.persistence-jpa=true"
+            )
+            .withBean(AttributeMigrationService.class, () -> customService)
+            .run(context -> {
+                // Context will fail because persistence auto-config needs DataSource,
+                // but we can verify with a simpler runner that only has migration config
+                assertThat(context).hasFailed();
+            });
+
+        // Use a minimal runner that only has migration config + a mock DataSource
+        new ApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(
+                CustomerRegistryMigrationAutoConfiguration.class
+            ))
+            .withPropertyValues(
+                "customer.registry.enabled=true",
+                "customer.registry.features.persistence-jpa=true"
+            )
+            .withBean(AttributeMigrationService.class, () -> customService)
+            .run(context -> {
+                assertThat(context).hasNotFailed();
+                assertThat(context).hasSingleBean(AttributeMigrationService.class);
+                assertThat(context.getBean(AttributeMigrationService.class)).isSameAs(customService);
             });
     }
 }

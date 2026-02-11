@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import shutil
@@ -32,6 +33,10 @@ try:
     import fcntl
 except ImportError:
     fcntl = None  # Windows — file locking unavailable
+    logging.warning(
+        "fcntl module not available (Windows). File locking for state files is disabled; "
+        "concurrent CLI invocations may cause data corruption."
+    )
 
 import yaml
 
@@ -337,12 +342,7 @@ class RepoDetector:
 class ScorecardChecker:
     """Runs the 13 fast scorecard checks against a detected repo."""
 
-    _methods_validated = False
-
     def __init__(self, detector: RepoDetector, verbose: bool = False):
-        if not ScorecardChecker._methods_validated:
-            _validate_dimension_methods()
-            ScorecardChecker._methods_validated = True
         self.d = detector
         self.verbose = verbose
         self._pkg_cache: dict[str, Optional[Path]] = {}
@@ -575,7 +575,9 @@ class ScorecardChecker:
                         non_interface_files.append(f.name)
 
         # Count outbound adapter packages that typically need port interfaces.
-        # REST is an inbound adapter (calls core service directly), so excluded.
+        # REST is excluded because it is an *inbound* adapter: it receives HTTP requests
+        # and calls core services directly (driving side). Only *outbound* adapters
+        # (persistence, events) implement core port interfaces (driven side).
         outbound_adapter_count = sum(1 for d in ["persistence", "events"] if self._find_package_dir(d))
         passed = len(interface_files) >= max(1, outbound_adapter_count)
 
@@ -1069,6 +1071,9 @@ class ScorecardChecker:
         return result
 
 
+# Validate dimension methods at import time (catches typos immediately).
+_validate_dimension_methods()
+
 # ─── StateManager ───────────────────────────────────────────────────────────
 
 class StateManager:
@@ -1260,11 +1265,13 @@ class WorkflowGuide:
                     print(f"  Advance to Phase {phase + 1} with: guide --phase {phase + 1}")
                 else:
                     print(f"  {GREEN}Migration complete!{RESET}")
-                # Update state
+                # Update state (preserve existing flags like gate_skipped)
                 now = datetime.now(timezone.utc).isoformat()
                 phase_key = str(phase)
                 if phase_key in state.phase_times:
                     state.phase_times[phase_key]["completed"] = now
+                else:
+                    state.phase_times[phase_key] = {"started": now, "completed": now}
                 state.current_phase = phase + 1 if phase < 5 else 5
                 next_key = str(state.current_phase)
                 if next_key not in state.phase_times and state.current_phase <= 5:
@@ -1292,11 +1299,13 @@ class WorkflowGuide:
                         f"         Use 'verify --phase {unverified_start}' to check prerequisites first.\n"
                     )
             print(f"{DIM}(Gate check skipped with --skip-gate){RESET}\n")
-            # Record that gate was skipped (audit trail)
+            # Record that gate was skipped (audit trail) and mark as completed
             now = datetime.now(timezone.utc).isoformat()
             phase_key = str(phase)
             if phase_key not in state.phase_times:
-                state.phase_times[phase_key] = {"started": now, "completed": None}
+                state.phase_times[phase_key] = {"started": now, "completed": now}
+            else:
+                state.phase_times[phase_key]["completed"] = now
             state.phase_times[phase_key]["gate_skipped"] = True
             state.phase_times[phase_key]["gate_skipped_at"] = now
             self.state_mgr.save(state)

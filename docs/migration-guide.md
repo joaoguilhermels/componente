@@ -19,6 +19,17 @@ implementation.
 9. [Copilot-Assisted Migration](#9-copilot-assisted-migration)
 10. [Pragmatic vs. Strict Hexagonal](#10-pragmatic-vs-strict-hexagonal)
 
+### Related Documentation
+
+| Document | Covers |
+|----------|--------|
+| [Copilot Migration Strategy](copilot-migration-strategy.md) | Step-by-step Copilot Chat workflow (workspace setup, phases 0-5) |
+| [Copilot Prompts](../migration/copilot-prompts.md) | 20 ready-to-paste prompts organized by phase |
+| [Migration Scorecard](../migration/scorecard.md) | 23-dimension progress tracker (13 automated + 10 manual) |
+| [Migration Templates README](../migration/README.md) | Template files and usage instructions |
+| [CONTRIBUTING.md](../CONTRIBUTING.md) | Development workflow, branch naming, PR process |
+| [README.md](../README.md) | Architecture diagrams, REST API docs, event schemas |
+
 ---
 
 ## 1. Overview
@@ -1086,8 +1097,20 @@ scorecard dimensions. Known limitations:
   Interfaces inside inner classes or annotations are detected correctly, but dynamically
   generated interfaces are not.
 
+- **@Bean/@ConditionalOnMissingBean effective distance**: The CLI considers annotations
+  "paired" if `@ConditionalOnMissingBean` appears within 5 lines of a `@Bean` annotation.
+  If your `@Bean` method has a large Javadoc block (> 5 lines) between the annotations,
+  the CLI may report them as unpaired. Move the Javadoc above both annotations to fix this.
+
 These heuristics are deliberately conservative — they may produce false warnings but should
 not produce false passes. If a check fails unexpectedly, use `--verbose` for full details.
+
+> **CLI Scope**: The `@ConditionalOnMissingBean` check applies to:
+> - `*CoreAutoConfiguration.java` (core fallback beans)
+> - `*Configuration.java` in `persistence/`, `rest/`, `events/` packages (bridge configs)
+>
+> Auto-configs for migration, observability, and Liquibase are **excluded** because their
+> beans use different conditional patterns (`@ConditionalOnBean`, `@ConditionalOnClass`).
 
 ### Testing Auto-Configuration
 

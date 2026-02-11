@@ -227,6 +227,42 @@ export class CustomerFormComponent implements OnInit {
       documentControl.addValidators([cnpjValidator()]);
     }
     documentControl.updateValueAndValidity();
+
+    // Clear/re-apply extra field validators based on appliesTo
+    for (const field of this.extraFields) {
+      const control = this.form.get(field.key);
+      if (!control) continue;
+      control.clearValidators();
+      if (!field.appliesTo || field.appliesTo.includes(this.currentType)) {
+        if (field.validatorFns?.length) {
+          control.addValidators(field.validatorFns);
+        }
+      }
+      control.updateValueAndValidity();
+    }
+
+    // Clear/re-apply host validation rules based on appliesTo.
+    // Collect unique field paths, rebuild their validators from base + applicable rules.
+    const ruleFieldPaths = new Set(this.validationRules.map((r) => r.fieldPath));
+    for (const fieldPath of ruleFieldPaths) {
+      const control = this.form.get(fieldPath);
+      if (!control) continue;
+      // Skip document — already fully rebuilt above
+      if (fieldPath === 'document') continue;
+
+      // Rebuild: base required validator (for core fields) + applicable rules
+      control.clearValidators();
+      if (fieldPath === 'displayName') {
+        control.addValidators([Validators.required]);
+      }
+      for (const rule of this.validationRules) {
+        if (rule.fieldPath !== fieldPath) continue;
+        if (!rule.appliesTo || rule.appliesTo.includes(this.currentType)) {
+          control.addValidators(rule.validators);
+        }
+      }
+      control.updateValueAndValidity();
+    }
   }
 
   onSubmit(): void {

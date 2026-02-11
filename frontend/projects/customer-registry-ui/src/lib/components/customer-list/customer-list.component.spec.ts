@@ -110,4 +110,20 @@ describe('CustomerListComponent', () => {
     fixture.detectChanges();
     expect(component.displayedColumns()).toEqual(['document', 'displayName']);
   });
+
+  it('should not fire row selectCustomer when action button is clicked (C4)', () => {
+    fixture.componentRef.setInput('customers', [mockCustomer]);
+    fixture.componentRef.setInput('totalCount', 1);
+    fixture.detectChanges();
+
+    const spy = jest.spyOn(component.selectCustomer, 'emit');
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    const button = compiled.querySelector('button[mat-icon-button]') as HTMLButtonElement;
+    button.click();
+
+    // The button click should only fire selectCustomer once (from the button handler),
+    // not twice (once from button + once from row click bubbling up)
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
 });

@@ -67,7 +67,9 @@ export class CustomerStateService implements OnDestroy {
 
   ngOnDestroy(): void {
     this.searchSub?.unsubscribe();
+    this.searchSub = undefined;
     this.detailSub?.unsubscribe();
+    this.detailSub = undefined;
   }
 
   /** Load customers with optional search params */

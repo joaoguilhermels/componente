@@ -112,6 +112,10 @@ export class CustomerSearchComponent {
     displayName: [''],
   });
 
+  /**
+   * Whether the search panel is visible, based on the `search` feature flag.
+   * Config is injected once via `useValue`; runtime changes are not reflected.
+   */
   get isVisible(): boolean {
     return this.config.features.search;
   }

@@ -28,7 +28,9 @@ public interface CustomerRepository {
      * @deprecated Use {@link #findAll(int, int)} for paginated results.
      */
     @Deprecated
-    List<Customer> findAll();
+    default List<Customer> findAll() {
+        return findAll(0, Integer.MAX_VALUE).customers();
+    }
 
     /**
      * Returns a page of customers.

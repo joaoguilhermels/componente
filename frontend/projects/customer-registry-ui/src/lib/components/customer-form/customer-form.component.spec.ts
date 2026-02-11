@@ -256,6 +256,120 @@ describe('CustomerFormComponent', () => {
     });
   });
 
+  describe('extra field validators on type change (A2)', () => {
+    it('should clear PJ-only field validators when type switches to PF', () => {
+      const extraFields: ExtraFieldDefinition[] = [
+        {
+          key: 'companySize',
+          labelKey: 'field.companySize',
+          type: 'text',
+          appliesTo: ['PJ'],
+          validatorFns: [Validators.required],
+        },
+      ];
+      createComponent(extraFields);
+
+      // Switch to PJ so companySize is visible and has validators
+      component.form.get('type')?.setValue('PJ');
+      component.onTypeChange();
+      component.form.get('companySize')?.setValue('');
+      expect(component.form.get('companySize')?.hasError('required')).toBe(true);
+
+      // Switch back to PF — validators should be cleared
+      component.form.get('type')?.setValue('PF');
+      component.onTypeChange();
+      component.form.get('companySize')?.setValue('');
+      component.form.get('companySize')?.updateValueAndValidity();
+      expect(component.form.get('companySize')?.hasError('required')).toBe(false);
+    });
+
+    it('should restore PF-only field validators when type switches back to PF', () => {
+      const extraFields: ExtraFieldDefinition[] = [
+        {
+          key: 'nickname',
+          labelKey: 'field.nickname',
+          type: 'text',
+          appliesTo: ['PF'],
+          validatorFns: [Validators.required],
+        },
+      ];
+      createComponent(extraFields);
+
+      // Default is PF: field should have required
+      component.form.get('nickname')?.setValue('');
+      expect(component.form.get('nickname')?.hasError('required')).toBe(true);
+
+      // Switch to PJ — validators should be cleared
+      component.form.get('type')?.setValue('PJ');
+      component.onTypeChange();
+      component.form.get('nickname')?.setValue('');
+      component.form.get('nickname')?.updateValueAndValidity();
+      expect(component.form.get('nickname')?.hasError('required')).toBe(false);
+
+      // Switch back to PF — validators should be restored
+      component.form.get('type')?.setValue('PF');
+      component.onTypeChange();
+      component.form.get('nickname')?.setValue('');
+      component.form.get('nickname')?.updateValueAndValidity();
+      expect(component.form.get('nickname')?.hasError('required')).toBe(true);
+    });
+
+    it('should always have validators on fields without appliesTo', () => {
+      const extraFields: ExtraFieldDefinition[] = [
+        {
+          key: 'universalRequired',
+          labelKey: 'field.universal',
+          type: 'text',
+          validatorFns: [Validators.required],
+        },
+      ];
+      createComponent(extraFields);
+
+      // PF (default)
+      component.form.get('universalRequired')?.setValue('');
+      expect(component.form.get('universalRequired')?.hasError('required')).toBe(true);
+
+      // Switch to PJ — validators should remain
+      component.form.get('type')?.setValue('PJ');
+      component.onTypeChange();
+      component.form.get('universalRequired')?.setValue('');
+      component.form.get('universalRequired')?.updateValueAndValidity();
+      expect(component.form.get('universalRequired')?.hasError('required')).toBe(true);
+
+      // Switch back to PF — validators still remain
+      component.form.get('type')?.setValue('PF');
+      component.onTypeChange();
+      component.form.get('universalRequired')?.setValue('');
+      component.form.get('universalRequired')?.updateValueAndValidity();
+      expect(component.form.get('universalRequired')?.hasError('required')).toBe(true);
+    });
+
+    it('should clear/restore host validation rules on type change', () => {
+      const rules: CustomerValidationRule[] = [
+        { fieldPath: 'displayName', appliesTo: ['PJ'], validators: [Validators.minLength(5)] },
+      ];
+      createComponent([], rules);
+
+      // Default type is PF — PJ-only rule should not be active
+      component.form.get('displayName')?.setValue('AB');
+      expect(component.form.get('displayName')?.hasError('minlength')).toBe(false);
+
+      // Switch to PJ — PJ-only rule should be active
+      component.form.get('type')?.setValue('PJ');
+      component.onTypeChange();
+      component.form.get('displayName')?.setValue('AB');
+      component.form.get('displayName')?.updateValueAndValidity();
+      expect(component.form.get('displayName')?.hasError('minlength')).toBe(true);
+
+      // Switch back to PF — PJ-only rule should be cleared again
+      component.form.get('type')?.setValue('PF');
+      component.onTypeChange();
+      component.form.get('displayName')?.setValue('AB');
+      component.form.get('displayName')?.updateValueAndValidity();
+      expect(component.form.get('displayName')?.hasError('minlength')).toBe(false);
+    });
+  });
+
   describe('appliesTo edge cases (C10)', () => {
     it('should show extra fields with empty appliesTo array for all types', () => {
       const extraFields: ExtraFieldDefinition[] = [

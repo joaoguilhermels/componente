@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.Bean;
@@ -36,6 +37,7 @@ public class CustomerRegistryMigrationAutoConfiguration {
         CustomerRegistryMigrationAutoConfiguration.class);
 
     @Bean
+    @ConditionalOnMissingBean
     public AttributeMigrationService attributeMigrationService(
             DataSource dataSource,
             List<AttributeSchemaMigration> migrations,
@@ -43,7 +45,8 @@ public class CustomerRegistryMigrationAutoConfiguration {
         return new AttributeMigrationService(
             dataSource,
             migrations,
-            properties.getMigration().isStrict()
+            properties.getMigration().isStrict(),
+            properties.getMigration().getAdvisoryLockKey()
         );
     }
 
