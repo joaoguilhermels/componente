@@ -19,6 +19,7 @@ import org.springframework.context.MessageSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.support.ReloadableResourceBundleMessageSource;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -402,6 +403,30 @@ class CustomerControllerTest {
             // Verify both operations were called
             verify(service).update(any(Customer.class));
             verify(service).changeStatus(customer.getId(), CustomerStatus.ACTIVE);
+        }
+    }
+
+    // ─── Optimistic Lock ─────────────────────────────────────────
+
+    @Nested
+    @DisplayName("Concurrent modification handling")
+    class ConcurrentModification {
+
+        @Test
+        @DisplayName("should return 409 for optimistic lock failure")
+        void return409ForOptimisticLock() throws Exception {
+            Customer customer = samplePfCustomer();
+            when(service.findById(customer.getId())).thenReturn(Optional.of(customer));
+            when(service.update(any(Customer.class)))
+                .thenThrow(new OptimisticLockingFailureException("Row was updated by another transaction"));
+
+            mockMvc.perform(patch("/api/v1/customers/{id}", customer.getId())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {"displayName":"Concurrent Update"}
+                        """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.title").value("Concurrent Modification"));
         }
     }
 

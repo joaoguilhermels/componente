@@ -71,6 +71,13 @@ public class CustomerRegistryService {
 
     /**
      * Updates an existing customer's data.
+     *
+     * <p>Note: Document uniqueness is enforced by the database constraint, not by
+     * application-level duplicate checking. If the document field is modified to
+     * conflict with another customer, a database constraint violation will be thrown
+     * rather than a {@link DuplicateDocumentException}. This is acceptable because
+     * document changes on existing customers are uncommon and the REST layer
+     * disables document editing.</p>
      */
     @Transactional
     public Customer update(Customer customer) {

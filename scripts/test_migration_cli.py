@@ -2059,6 +2059,32 @@ class TestPhaseTimesValidation:
         state = mgr.load()
         assert state.phase_times == {}
 
+    def test_load_non_integer_current_phase_raises_ValueError(self, tmp_path):
+        """current_phase set to a non-integer should raise ValueError."""
+        import yaml
+        mgr = cli.StateManager(tmp_path)
+        mgr.state_dir.mkdir(parents=True, exist_ok=True)
+        mgr.state_file.write_text(yaml.dump({
+            "service_name": "Svc",
+            "tier": "Standard",
+            "current_phase": "three",
+        }))
+        with pytest.raises(ValueError, match="current_phase.*must be an integer"):
+            mgr.load()
+
+    def test_load_malformed_phase_times_entry_raises_ValueError(self, tmp_path):
+        """phase_times with non-dict inner values should raise ValueError."""
+        import yaml
+        mgr = cli.StateManager(tmp_path)
+        mgr.state_dir.mkdir(parents=True, exist_ok=True)
+        mgr.state_file.write_text(yaml.dump({
+            "service_name": "Svc",
+            "tier": "Standard",
+            "phase_times": {"1": "bad"},
+        }))
+        with pytest.raises(ValueError, match="phase_times\\['1'\\].*must be a mapping"):
+            mgr.load()
+
 
 # ─── B1: File Lock Race Condition Tests ──────────────────────────────────────
 

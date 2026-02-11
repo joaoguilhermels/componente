@@ -62,8 +62,14 @@ public class PostgresAdvisoryLock implements AutoCloseable {
      * @throws SQLException if a database error occurs
      */
     public boolean tryAcquire() throws SQLException {
-        dedicatedConnection = dataSource.getConnection();
-        dedicatedConnection.setAutoCommit(true);
+        Connection conn = dataSource.getConnection();
+        try {
+            conn.setAutoCommit(true);
+        } catch (SQLException e) {
+            conn.close();
+            throw e;
+        }
+        dedicatedConnection = conn;
 
         try (PreparedStatement ps = dedicatedConnection
                 .prepareStatement("SELECT pg_try_advisory_lock(?)")) {

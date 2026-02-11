@@ -110,15 +110,20 @@ final class AttributesJsonSerializer {
 
     private static AttributeValue deserializeValue(Map<String, Object> map) {
         String type = (String) map.get("type");
+        if (type == null) {
+            return new AttributeValue.StringValue(String.valueOf(map.get("value")));
+        }
         Object raw = map.get("value");
 
         return switch (type) {
-            case "STRING" -> new AttributeValue.StringValue((String) raw);
-            case "INTEGER" -> new AttributeValue.IntegerValue(((Number) raw).intValue());
-            case "BOOLEAN" -> new AttributeValue.BooleanValue((Boolean) raw);
-            case "DECIMAL" -> new AttributeValue.DecimalValue(new java.math.BigDecimal(raw.toString()));
-            case "DATE" -> new AttributeValue.DateValue(java.time.LocalDate.parse(raw.toString()));
-            default -> new AttributeValue.StringValue(raw.toString());
+            case "STRING" -> new AttributeValue.StringValue(raw != null ? (String) raw : "");
+            case "INTEGER" -> new AttributeValue.IntegerValue(raw != null ? ((Number) raw).intValue() : 0);
+            case "BOOLEAN" -> new AttributeValue.BooleanValue(raw != null && (Boolean) raw);
+            case "DECIMAL" -> new AttributeValue.DecimalValue(
+                raw != null ? new java.math.BigDecimal(raw.toString()) : java.math.BigDecimal.ZERO);
+            case "DATE" -> new AttributeValue.DateValue(
+                raw != null ? java.time.LocalDate.parse(raw.toString()) : java.time.LocalDate.EPOCH);
+            default -> new AttributeValue.StringValue(raw != null ? raw.toString() : "");
         };
     }
 }

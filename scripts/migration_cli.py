@@ -1114,6 +1114,18 @@ class StateManager:
                 f"Invalid state file {self.state_file}: 'phase_times' must be a mapping, "
                 f"got {type(phase_times).__name__}"
             )
+        for phase_key, phase_data in phase_times.items():
+            if not isinstance(phase_data, dict):
+                raise ValueError(
+                    f"Invalid state file {self.state_file}: phase_times['{phase_key}'] "
+                    f"must be a mapping, got {type(phase_data).__name__}"
+                )
+        current_phase = data.get("current_phase", 0)
+        if not isinstance(current_phase, int):
+            raise ValueError(
+                f"Invalid state file {self.state_file}: 'current_phase' must be an integer, "
+                f"got {type(current_phase).__name__}"
+            )
         return MigrationState(
             service_name=data["service_name"],
             base_package=data.get("base_package", ""),
@@ -1121,7 +1133,7 @@ class StateManager:
             property_prefix=data.get("property_prefix", ""),
             tier=data.get("tier", "Standard"),
             has_frontend=data.get("has_frontend", False),
-            current_phase=data.get("current_phase", 0),
+            current_phase=current_phase,
             phase_times=phase_times,
             errors_encountered=data.get("errors_encountered", []),
             prompts_applied=data.get("prompts_applied", []),

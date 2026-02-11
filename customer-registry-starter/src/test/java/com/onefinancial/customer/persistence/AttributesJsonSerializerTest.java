@@ -146,6 +146,43 @@ class AttributesJsonSerializerTest {
         }
 
         @Test
+        @DisplayName("should fallback to StringValue when type is null")
+        void nullTypeFallsBackToStringValue() {
+            String json = """
+                {"schemaVersion":1,"values":{"broken":{"value":"hello"}}}
+                """;
+
+            Attributes result = AttributesJsonSerializer.fromJson(json);
+
+            assertThat(result.get("broken", AttributeValue.StringValue.class).value())
+                .isEqualTo("hello");
+        }
+
+        @Test
+        @DisplayName("should return defaults when value is null for each type")
+        void nullValueReturnsDefaultForEachType() {
+            String json = """
+                {"schemaVersion":1,"values":{
+                  "s":{"type":"STRING","value":null},
+                  "i":{"type":"INTEGER","value":null},
+                  "b":{"type":"BOOLEAN","value":null},
+                  "d":{"type":"DECIMAL","value":null},
+                  "dt":{"type":"DATE","value":null}
+                }}
+                """;
+
+            Attributes result = AttributesJsonSerializer.fromJson(json);
+
+            assertThat(result.get("s", AttributeValue.StringValue.class).value()).isEmpty();
+            assertThat(result.get("i", AttributeValue.IntegerValue.class).value()).isZero();
+            assertThat(result.get("b", AttributeValue.BooleanValue.class).value()).isFalse();
+            assertThat(result.get("d", AttributeValue.DecimalValue.class).value())
+                .isEqualByComparingTo(java.math.BigDecimal.ZERO);
+            assertThat(result.get("dt", AttributeValue.DateValue.class).value())
+                .isEqualTo(java.time.LocalDate.EPOCH);
+        }
+
+        @Test
         @DisplayName("should handle missing values map gracefully")
         void missingValuesMap() {
             String json = """
